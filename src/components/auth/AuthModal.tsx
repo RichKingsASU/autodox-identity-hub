@@ -4,10 +4,11 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { RecessedInput } from "@/components/ui/RecessedInput";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ArrowRight, Mail, Lock, User, Phone, X } from "lucide-react";
+import { Sparkles, ArrowRight, X } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { EmailVerificationScreen } from "./EmailVerificationScreen";
 
 const signUpSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -43,6 +44,8 @@ export function AuthModal({
   prefillData 
 }: AuthModalProps) {
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
+  const [showVerification, setShowVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { signIn, signUp } = useAuth();
@@ -96,12 +99,9 @@ export function AuthModal({
             description: error.message,
           });
         } else {
-          toast({
-            title: "Account created!",
-            description: "You can now complete your application.",
-          });
-          onSuccess?.();
-          onClose();
+          // Show email verification screen
+          setVerificationEmail(formData.email);
+          setShowVerification(true);
         }
       } else {
         const result = signInSchema.safeParse(formData);
@@ -140,6 +140,20 @@ export function AuthModal({
   };
 
   if (!isOpen) return null;
+
+  // Show verification screen after signup
+  if (showVerification) {
+    return (
+      <EmailVerificationScreen
+        email={verificationEmail}
+        onBack={() => {
+          setShowVerification(false);
+          setMode("signin");
+        }}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <motion.div
