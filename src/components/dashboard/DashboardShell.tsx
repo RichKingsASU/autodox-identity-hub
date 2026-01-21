@@ -9,7 +9,10 @@ import {
   Menu,
   X,
   Clock,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  FlaskConical,
+  Rocket
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -17,12 +20,20 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { AIAssistant } from "./AIAssistant";
 import { SMSLogsTable } from "./SMSLogsTable";
 import { APIKeysTable } from "./APIKeysTable";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DashboardShellProps {
   isPending?: boolean;
   userName: string;
   onSignOut?: () => void;
 }
+
+type ApiEnvironment = "production" | "sandbox";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Overview", id: "overview" },
@@ -34,6 +45,7 @@ const navItems = [
 export function DashboardShell({ isPending = false, userName, onSignOut }: DashboardShellProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [apiEnvironment, setApiEnvironment] = useState<ApiEnvironment>("sandbox");
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -120,6 +132,56 @@ export function DashboardShell({ isPending = false, userName, onSignOut }: Dashb
             </button>
             <h1 className="text-lg font-semibold text-foreground capitalize">{activeTab}</h1>
           </div>
+
+          {/* API Environment Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all",
+                  apiEnvironment === "production"
+                    ? "border-success/50 bg-success/10 text-success"
+                    : "border-warning/50 bg-warning/10 text-warning"
+                )}
+              >
+                {apiEnvironment === "production" ? (
+                  <Rocket className="h-4 w-4" />
+                ) : (
+                  <FlaskConical className="h-4 w-4" />
+                )}
+                <span className="text-sm font-medium capitalize">{apiEnvironment}</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-popover border border-border">
+              <DropdownMenuItem
+                onClick={() => setApiEnvironment("sandbox")}
+                className={cn(
+                  "flex items-center gap-2 cursor-pointer",
+                  apiEnvironment === "sandbox" && "bg-accent"
+                )}
+              >
+                <FlaskConical className="h-4 w-4 text-warning" />
+                <div className="flex-1">
+                  <p className="font-medium">Sandbox</p>
+                  <p className="text-xs text-muted-foreground">Test environment</p>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setApiEnvironment("production")}
+                className={cn(
+                  "flex items-center gap-2 cursor-pointer",
+                  apiEnvironment === "production" && "bg-accent"
+                )}
+              >
+                <Rocket className="h-4 w-4 text-success" />
+                <div className="flex-1">
+                  <p className="font-medium">Production</p>
+                  <p className="text-xs text-muted-foreground">Live environment</p>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         {/* Pending Banner */}
