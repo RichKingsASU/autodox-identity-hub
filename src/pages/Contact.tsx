@@ -8,6 +8,7 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { RecessedInput } from "@/components/ui/RecessedInput";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
@@ -76,18 +77,40 @@ export default function Contact() {
 
     setIsSubmitting(true);
     
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: "Message sent!",
-      description: "We'll get back to you within 24 hours.",
-    });
-    
-    setFormData({ name: "", email: "", company: "", message: "" });
-    setTouched({});
-    setErrors({});
-    setIsSubmitting(false);
+    try {
+      const { error } = await supabase.from("contact_submissions").insert({
+        name: formData.name,
+        email: formData.email,
+        company: formData.company || null,
+        message: formData.message,
+      });
+
+      if (error) {
+        console.error("Contact form error:", error);
+        toast({
+          title: "Failed to send message",
+          description: "Please try again later.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Message sent!",
+          description: "We'll get back to you within 24 hours.",
+        });
+        setFormData({ name: "", email: "", company: "", message: "" });
+        setTouched({});
+        setErrors({});
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      toast({
+        title: "Failed to send message",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const contactInfo = [
