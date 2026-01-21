@@ -5,6 +5,7 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { LeadCaptureCard } from "@/components/landing/LeadCaptureCard";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { PricingSection } from "@/components/landing/PricingSection";
+import { BlogSection } from "@/components/landing/BlogSection";
 import { Footer } from "@/components/landing/Footer";
 import { ApplicationStepper } from "@/components/application/ApplicationStepper";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -97,6 +98,9 @@ const Index = () => {
 
           {/* Pricing Section */}
           <PricingSection />
+
+          {/* Blog Section */}
+          <BlogSection />
 
           {/* Footer */}
           <Footer />
