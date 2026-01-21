@@ -1,15 +1,45 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
-import { RefreshCw, Copy, Check, Key } from "lucide-react";
+import { RefreshCw, Copy, Check, Key, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { GlassCard } from "@/components/ui/GlassCard";
 
 interface PasswordGeneratorProps {
   onSelect?: (password: string) => void;
   defaultLength?: number;
+}
+
+type StrengthLevel = "weak" | "medium" | "strong" | "very-strong";
+
+function calculateStrength(
+  password: string,
+  hasUpper: boolean,
+  hasLower: boolean,
+  hasNumbers: boolean,
+  hasSymbols: boolean
+): { level: StrengthLevel; score: number; label: string } {
+  if (!password) return { level: "weak", score: 0, label: "Generate a key" };
+
+  let score = 0;
+  const length = password.length;
+
+  // Length scoring
+  if (length >= 8) score += 1;
+  if (length >= 16) score += 1;
+  if (length >= 24) score += 1;
+  if (length >= 32) score += 1;
+
+  // Character diversity scoring
+  const charTypes = [hasUpper, hasLower, hasNumbers, hasSymbols].filter(Boolean).length;
+  score += charTypes;
+
+  // Determine level
+  if (score <= 2) return { level: "weak", score: 25, label: "Weak" };
+  if (score <= 4) return { level: "medium", score: 50, label: "Medium" };
+  if (score <= 6) return { level: "strong", score: 75, label: "Strong" };
+  return { level: "very-strong", score: 100, label: "Very Strong" };
 }
 
 export function PasswordGenerator({ onSelect, defaultLength = 32 }: PasswordGeneratorProps) {
@@ -62,8 +92,29 @@ export function PasswordGenerator({ onSelect, defaultLength = 32 }: PasswordGene
     generatePassword();
   });
 
+  const strength = useMemo(
+    () => calculateStrength(password, includeUppercase, includeLowercase, includeNumbers, includeSymbols),
+    [password, includeUppercase, includeLowercase, includeNumbers, includeSymbols]
+  );
+
+  const strengthColors = {
+    weak: "bg-destructive",
+    medium: "bg-yellow-500",
+    strong: "bg-green-500",
+    "very-strong": "bg-emerald-400",
+  };
+
+  const strengthIcons = {
+    weak: ShieldAlert,
+    medium: Shield,
+    strong: ShieldCheck,
+    "very-strong": ShieldCheck,
+  };
+
+  const StrengthIcon = strengthIcons[strength.level];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Generated Password Display */}
       <div className="relative">
         <div className="flex items-center gap-2 p-4 bg-secondary/50 rounded-xl border border-border">
@@ -99,6 +150,43 @@ export function PasswordGenerator({ onSelect, defaultLength = 32 }: PasswordGene
               </motion.div>
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Strength Indicator */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <StrengthIcon
+              className={`h-4 w-4 ${
+                strength.level === "weak"
+                  ? "text-destructive"
+                  : strength.level === "medium"
+                  ? "text-yellow-500"
+                  : "text-green-500"
+              }`}
+            />
+            <span className="text-sm font-medium text-muted-foreground">Strength</span>
+          </div>
+          <span
+            className={`text-sm font-semibold ${
+              strength.level === "weak"
+                ? "text-destructive"
+                : strength.level === "medium"
+                ? "text-yellow-500"
+                : "text-green-500"
+            }`}
+          >
+            {strength.label}
+          </span>
+        </div>
+        <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+          <motion.div
+            className={`h-full ${strengthColors[strength.level]} rounded-full`}
+            initial={{ width: 0 }}
+            animate={{ width: `${strength.score}%` }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          />
         </div>
       </div>
 
