@@ -11,6 +11,9 @@ interface UserRole {
   created_at: string;
 }
 
+// DEV BYPASS: Set to true to skip authentication in development
+const DEV_BYPASS = import.meta.env.DEV && true;
+
 export function useAdminAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
@@ -19,6 +22,16 @@ export function useAdminAuth() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
+    // DEV BYPASS: Skip auth in development
+    if (DEV_BYPASS) {
+      setUser({ id: "dev-user", email: "dev@autodox.com" } as User);
+      setRoles(["super_admin"]);
+      setIsAdmin(true);
+      setIsSuperAdmin(true);
+      setLoading(false);
+      return;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setUser(session?.user ?? null);
