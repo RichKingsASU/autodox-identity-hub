@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Terminal } from "lucide-react";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { LeadCaptureCard } from "@/components/landing/LeadCaptureCard";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
@@ -16,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 type AppState = "landing" | "application" | "dashboard";
 
 const Index = () => {
+  const navigate = useNavigate();
   const { user, profile, application, loading, signOut } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -102,9 +104,20 @@ const Index = () => {
                     Enterprise
                   </a>
                 </div>
-                <GradientButton size="sm" onClick={handleLoginClick}>
-                  Login
-                </GradientButton>
+                <div className="flex items-center gap-2">
+                  {import.meta.env.DEV && (
+                    <button
+                      onClick={() => navigate("/admin")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-500/50 text-orange-500 hover:bg-orange-500/10 transition-colors"
+                    >
+                      <Terminal className="h-3.5 w-3.5" />
+                      Dev
+                    </button>
+                  )}
+                  <GradientButton size="sm" onClick={handleLoginClick}>
+                    Login
+                  </GradientButton>
+                </div>
               </div>
             </nav>
 
