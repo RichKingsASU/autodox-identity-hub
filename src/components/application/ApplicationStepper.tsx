@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, ArrowRight, Building2, Briefcase, FileText, Check, Loader2 } from "lucide-react";
 import { z } from "zod";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 interface StepProps {
   isActive: boolean;
@@ -41,15 +43,16 @@ function StepIndicator({ isActive, isCompleted, stepNumber, title }: StepProps) 
 }
 
 interface ApplicationStepperProps {
-  userData: { firstName: string; lastName: string; email: string; phone: string };
-  onComplete: () => void;
+  userData: { firstName: string; lastName: string; email: string; phone: string | null };
 }
 
 const einSchema = z.string().regex(/^\d{2}-\d{7}$/, "EIN must be in format XX-XXXXXXX");
 
-export function ApplicationStepper({ userData, onComplete }: ApplicationStepperProps) {
+export function ApplicationStepper({ userData }: ApplicationStepperProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { submitApplication, refetchApplication } = useAuth();
+  const { toast } = useToast();
   
   const [step1Data, setStep1Data] = useState({
     companyName: "",
@@ -130,8 +133,30 @@ export function ApplicationStepper({ userData, onComplete }: ApplicationStepperP
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    onComplete();
+    
+    const { error } = await submitApplication({
+      company_name: step1Data.companyName,
+      ein: step1Data.ein,
+      use_case: step2Data.useCase,
+      monthly_volume: step2Data.monthlyVolume,
+      tos_url: step3Data.tosUrl,
+      privacy_url: step3Data.privacyUrl,
+    });
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Submission failed",
+        description: error.message,
+      });
+      setIsSubmitting(false);
+    } else {
+      toast({
+        title: "Application submitted!",
+        description: "Your KYB application is now under review.",
+      });
+      refetchApplication?.();
+    }
   };
 
   return (

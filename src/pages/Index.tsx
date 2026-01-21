@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { HeroSection } from "@/components/landing/HeroSection";
@@ -9,134 +9,182 @@ import { BlogSection } from "@/components/landing/BlogSection";
 import { Footer } from "@/components/landing/Footer";
 import { ApplicationStepper } from "@/components/application/ApplicationStepper";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { AuthModal } from "@/components/auth/AuthModal";
 import { GradientButton } from "@/components/ui/GradientButton";
+import { useAuth } from "@/hooks/useAuth";
 
-type AppState = "landing" | "application" | "dashboard-pending" | "dashboard-active";
+type AppState = "landing" | "application" | "dashboard";
 
 const Index = () => {
-  const [appState, setAppState] = useState<AppState>("landing");
-  const [userData, setUserData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-  });
+  const { user, profile, application, loading, signOut } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [prefillData, setPrefillData] = useState<{
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+  }>({});
 
-  const handleLeadComplete = (data: typeof userData) => {
-    setUserData(data);
-    setAppState("application");
+  // Determine app state based on auth and application status
+  const getAppState = (): AppState => {
+    if (!user) return "landing";
+    if (!application) return "application";
+    return "dashboard";
   };
 
-  const handleApplicationComplete = () => {
-    setAppState("dashboard-pending");
-    setTimeout(() => {
-      setAppState("dashboard-active");
-    }, 5000);
+  const appState = loading ? "landing" : getAppState();
+  const isPending = application?.status === "pending";
+
+  const handleLeadComplete = (data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+  }) => {
+    setPrefillData(data);
+    setAuthMode("signup");
+    setShowAuthModal(true);
   };
+
+  const handleLoginClick = () => {
+    setAuthMode("signin");
+    setShowAuthModal(true);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full"
+        />
+      </div>
+    );
+  }
 
   return (
-    <AnimatePresence mode="wait">
-      {appState === "landing" && (
-        <motion.div
-          key="landing"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="min-h-screen bg-background"
-        >
-          {/* Navigation */}
-          <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border">
-            <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-primary-foreground" />
+    <>
+      <AnimatePresence mode="wait">
+        {appState === "landing" && (
+          <motion.div
+            key="landing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="min-h-screen bg-background"
+          >
+            {/* Navigation */}
+            <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border">
+              <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                  <span className="text-xl font-bold text-foreground">Autodox</span>
                 </div>
-                <span className="text-xl font-bold text-foreground">Autodox</span>
+                <div className="hidden md:flex items-center gap-8">
+                  <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Features
+                  </a>
+                  <a href="#developers" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Developers
+                  </a>
+                  <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Pricing
+                  </a>
+                  <a href="#enterprise" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Enterprise
+                  </a>
+                </div>
+                <GradientButton size="sm" onClick={handleLoginClick}>
+                  Login
+                </GradientButton>
               </div>
-              <div className="hidden md:flex items-center gap-8">
-                <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Features
-                </a>
-                <a href="#developers" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Developers
-                </a>
-                <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Pricing
-                </a>
-                <a href="#enterprise" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Enterprise
-                </a>
+            </nav>
+
+            {/* Hero Section */}
+            <section className="min-h-screen pt-24 pb-12 flex items-center">
+              <div className="container mx-auto px-6">
+                <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+                  <HeroSection />
+                  <motion.div
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.3 }}
+                    className="flex justify-center lg:justify-end"
+                  >
+                    <LeadCaptureCard onComplete={handleLeadComplete} />
+                  </motion.div>
+                </div>
               </div>
-              <GradientButton
-                size="sm"
-                onClick={() => setAppState("application")}
-              >
-                Login
-              </GradientButton>
-            </div>
-          </nav>
+            </section>
 
-          {/* Hero Section */}
-          <section className="min-h-screen pt-24 pb-12 flex items-center">
-            <div className="container mx-auto px-6">
-              <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-                <HeroSection />
-                <motion.div 
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
-                  className="flex justify-center lg:justify-end"
-                >
-                  <LeadCaptureCard onComplete={handleLeadComplete} />
-                </motion.div>
-              </div>
-            </div>
-          </section>
+            {/* Features Section */}
+            <FeaturesSection />
 
-          {/* Features Section */}
-          <FeaturesSection />
+            {/* Pricing Section */}
+            <PricingSection />
 
-          {/* Pricing Section */}
-          <PricingSection />
+            {/* Blog Section */}
+            <BlogSection />
 
-          {/* Blog Section */}
-          <BlogSection />
+            {/* Footer */}
+            <Footer />
+          </motion.div>
+        )}
 
-          {/* Footer */}
-          <Footer />
-        </motion.div>
-      )}
+        {appState === "application" && user && (
+          <motion.div
+            key="application"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.4 }}
+          >
+            <ApplicationStepper
+              userData={{
+                firstName: profile?.first_name || "",
+                lastName: profile?.last_name || "",
+                email: profile?.email || user.email || "",
+                phone: profile?.phone || "",
+              }}
+            />
+          </motion.div>
+        )}
 
-      {appState === "application" && (
-        <motion.div
-          key="application"
-          initial={{ opacity: 0, rotateY: 90 }}
-          animate={{ opacity: 1, rotateY: 0 }}
-          exit={{ opacity: 0, rotateY: -90 }}
-          transition={{ duration: 0.5 }}
-          style={{ perspective: 1000 }}
-        >
-          <ApplicationStepper
-            userData={userData}
-            onComplete={handleApplicationComplete}
+        {appState === "dashboard" && user && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <DashboardShell
+              isPending={isPending}
+              userName={profile?.first_name || "User"}
+              onSignOut={handleSignOut}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAuthModal && (
+          <AuthModal
+            isOpen={showAuthModal}
+            onClose={() => setShowAuthModal(false)}
+            initialMode={authMode}
+            prefillData={prefillData}
           />
-        </motion.div>
-      )}
-
-      {(appState === "dashboard-pending" || appState === "dashboard-active") && (
-        <motion.div
-          key="dashboard"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <DashboardShell
-            isPending={appState === "dashboard-pending"}
-            userName={userData.firstName || "User"}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 

@@ -14,7 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      applications: {
+        Row: {
+          company_name: string
+          created_at: string
+          ein: string
+          id: string
+          monthly_volume: string
+          privacy_url: string
+          status: Database["public"]["Enums"]["application_status"]
+          tos_url: string
+          updated_at: string
+          use_case: string
+          user_id: string
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          ein: string
+          id?: string
+          monthly_volume: string
+          privacy_url: string
+          status?: Database["public"]["Enums"]["application_status"]
+          tos_url: string
+          updated_at?: string
+          use_case: string
+          user_id: string
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          ein?: string
+          id?: string
+          monthly_volume?: string
+          privacy_url?: string
+          status?: Database["public"]["Enums"]["application_status"]
+          tos_url?: string
+          updated_at?: string
+          use_case?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          first_name: string
+          id?: string
+          last_name: string
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          first_name?: string
+          id?: string
+          last_name?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +97,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      application_status: "pending" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +224,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      application_status: ["pending", "approved", "rejected"],
+    },
   },
 } as const
