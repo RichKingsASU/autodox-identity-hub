@@ -4,6 +4,9 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { PasswordGenerator } from "@/components/ui/PasswordGenerator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Plus, 
   Eye, 
@@ -12,7 +15,8 @@ import {
   Trash2, 
   AlertTriangle,
   Check,
-  X
+  X,
+  KeyRound
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
@@ -37,6 +41,9 @@ export function APIKeysTable() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
   const [confirmStep, setConfirmStep] = useState(0);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [generatedKey, setGeneratedKey] = useState("");
 
   const toggleReveal = (keyId: string) => {
     setRevealedKeys((prev) => {
@@ -74,6 +81,24 @@ export function APIKeysTable() {
     }
   };
 
+  const handleCreateKey = () => {
+    if (!newKeyName.trim() || !generatedKey) return;
+    
+    const newKey: APIKey = {
+      id: `key_${Date.now()}`,
+      name: newKeyName.trim(),
+      key: `sk_live_${generatedKey}`,
+      created: new Date().toISOString().split('T')[0],
+      lastUsed: "-",
+      status: "active",
+    };
+    
+    setKeys((prev) => [newKey, ...prev]);
+    setShowCreateModal(false);
+    setNewKeyName("");
+    setGeneratedKey("");
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -82,7 +107,7 @@ export function APIKeysTable() {
           <h2 className="text-lg font-semibold text-foreground">API Keys</h2>
           <p className="text-sm text-muted-foreground">Manage your API keys for authentication</p>
         </div>
-        <GradientButton className="gap-2">
+        <GradientButton className="gap-2" onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4" />
           Create New Key
         </GradientButton>
@@ -217,6 +242,66 @@ export function APIKeysTable() {
             >
               {confirmStep === 0 ? "Revoke Key" : "Confirm Revoke"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Key Modal */}
+      <Dialog open={showCreateModal} onOpenChange={(open) => {
+        setShowCreateModal(open);
+        if (!open) {
+          setNewKeyName("");
+          setGeneratedKey("");
+        }
+      }}>
+        <DialogContent className="bg-card border-border sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Create New API Key
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Generate a secure API key for your application. Make sure to copy it—you won't be able to see it again.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Key Name Input */}
+            <div className="space-y-2">
+              <Label htmlFor="keyName">Key Name</Label>
+              <Input
+                id="keyName"
+                placeholder="e.g., Production API Key"
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                className="bg-secondary/50"
+              />
+            </div>
+
+            {/* Password Generator */}
+            <div className="space-y-2">
+              <Label>Generated Key</Label>
+              <PasswordGenerator
+                defaultLength={32}
+                onSelect={setGeneratedKey}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateModal(false)}
+              className="rounded-xl border-border"
+            >
+              Cancel
+            </Button>
+            <GradientButton
+              onClick={handleCreateKey}
+              disabled={!newKeyName.trim() || !generatedKey}
+            >
+              Create Key
+            </GradientButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
