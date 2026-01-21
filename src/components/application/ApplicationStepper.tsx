@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { RecessedInput } from "@/components/ui/RecessedInput";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, Building2, Briefcase, FileText, Check, Loader2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, ArrowRight, Building2, Briefcase, FileText, Check, Loader2, HelpCircle } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +40,109 @@ function StepIndicator({ isActive, isCompleted, stepNumber, title }: StepProps) 
         {title}
       </span>
     </div>
+  );
+}
+
+// EIN Input with 3-second linger tooltip
+function EINInputWithTooltip({
+  value,
+  onChange,
+  error,
+  isValid,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  isValid: boolean;
+}) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const lingerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const formatEIN = (input: string) => {
+    const digits = input.replace(/\D/g, "").slice(0, 9);
+    if (digits.length > 2) {
+      return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    }
+    return digits;
+  };
+
+  const handleFocus = () => {
+    lingerTimeoutRef.current = setTimeout(() => {
+      setShowTooltip(true);
+    }, 3000);
+  };
+
+  const handleBlur = () => {
+    if (lingerTimeoutRef.current) {
+      clearTimeout(lingerTimeoutRef.current);
+    }
+    setShowTooltip(false);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(formatEIN(e.target.value));
+    // Reset the linger timer on any input
+    if (lingerTimeoutRef.current) {
+      clearTimeout(lingerTimeoutRef.current);
+    }
+    lingerTimeoutRef.current = setTimeout(() => {
+      setShowTooltip(true);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (lingerTimeoutRef.current) {
+        clearTimeout(lingerTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <TooltipProvider>
+      <Tooltip open={showTooltip}>
+        <TooltipTrigger asChild>
+          <div className="relative">
+            <RecessedInput
+              ref={inputRef}
+              label={
+                <span className="flex items-center gap-1.5">
+                  Employer Identification Number (EIN)
+                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                </span>
+              }
+              placeholder="XX-XXXXXXX"
+              value={value}
+              onChange={handleChange}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              error={error}
+              isValid={isValid}
+              className="font-mono"
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent 
+          side="right" 
+          className="max-w-xs bg-card border-border p-3"
+          onPointerDownOutside={() => setShowTooltip(false)}
+        >
+          <div className="space-y-2">
+            <p className="font-medium text-foreground text-sm">Where to find your EIN</p>
+            <p className="text-xs text-muted-foreground">
+              Your Employer Identification Number (EIN) is a 9-digit number assigned by the IRS. 
+              You can find it on:
+            </p>
+            <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+              <li>IRS Form SS-4 confirmation letter</li>
+              <li>Previous tax returns (Form 1120, 1065)</li>
+              <li>IRS correspondence</li>
+            </ul>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -216,14 +320,11 @@ export function ApplicationStepper({ userData }: ApplicationStepperProps) {
                   error={errors.companyName}
                   isValid={step1Data.companyName.length > 2}
                 />
-                <RecessedInput
-                  label="Employer Identification Number (EIN)"
-                  placeholder="XX-XXXXXXX"
+                <EINInputWithTooltip
                   value={step1Data.ein}
-                  onChange={(e) => setStep1Data((prev) => ({ ...prev, ein: formatEIN(e.target.value) }))}
+                  onChange={(value) => setStep1Data((prev) => ({ ...prev, ein: value }))}
                   error={errors.ein}
                   isValid={einSchema.safeParse(step1Data.ein).success}
-                  className="font-mono"
                 />
               </>
             )}
