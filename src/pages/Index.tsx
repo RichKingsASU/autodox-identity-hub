@@ -13,6 +13,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/hooks/use-toast";
 
 type AppState = "landing" | "application" | "dashboard";
@@ -20,6 +21,7 @@ type AppState = "landing" | "application" | "dashboard";
 const Index = () => {
   const navigate = useNavigate();
   const { user, profile, application, loading, signOut } = useAuth();
+  const { isAdmin, loading: adminLoading } = useAdminAuth();
   const { toast } = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -33,6 +35,21 @@ const Index = () => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const welcomeToastShown = useRef(false);
   const previousStatusRef = useRef<string | null>(null);
+  const redirectHandled = useRef(false);
+
+  // Role-based redirect after login
+  useEffect(() => {
+    if (!user || adminLoading || redirectHandled.current) return;
+    
+    // Only redirect if user has an approved application or is admin
+    if (isAdmin) {
+      redirectHandled.current = true;
+      navigate("/admin");
+    } else if (application?.status === "approved") {
+      redirectHandled.current = true;
+      navigate("/my-portal");
+    }
+  }, [user, isAdmin, adminLoading, application?.status, navigate]);
 
   // Fallback timeout to prevent infinite loading
   useEffect(() => {
