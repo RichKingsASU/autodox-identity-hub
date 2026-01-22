@@ -86,7 +86,7 @@ export function AuthModal({
           return;
         }
 
-        const { error } = await signUp(formData.email, formData.password, {
+        const { error, data } = await signUp(formData.email, formData.password, {
           first_name: formData.firstName,
           last_name: formData.lastName,
           phone: formData.phone,
@@ -98,8 +98,16 @@ export function AuthModal({
             title: "Sign up failed",
             description: error.message,
           });
+        } else if (data?.session) {
+          // User is auto-confirmed, close modal and proceed
+          toast({
+            title: "Account created!",
+            description: "Welcome to Autodox.",
+          });
+          onSuccess?.();
+          onClose();
         } else {
-          // Show email verification screen
+          // Email confirmation required, show verification screen
           setVerificationEmail(formData.email);
           setShowVerification(true);
         }
