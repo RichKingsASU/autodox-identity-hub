@@ -9,6 +9,7 @@ import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminApplications from "./pages/admin/AdminApplications";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPortals from "./pages/admin/AdminPortals";
@@ -60,6 +61,7 @@ const App = () => (
           {/* Admin Console Routes */}
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
+            <Route path="applications" element={<AdminApplications />} />
             <Route path="brands" element={<AdminBrands />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="portals" element={<AdminPortals />} />
