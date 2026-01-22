@@ -62,14 +62,13 @@ export function DashboardSidebar({ isOpen, onClose, onSignOut }: DashboardSideba
       )}
 
       {/* Sidebar */}
-      <motion.aside
-        initial={{ x: -280 }}
-        animate={{ x: isOpen ? 0 : -280 }}
-        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+      <aside
         className={cn(
           "fixed left-0 top-0 h-full w-[280px] z-50 flex flex-col",
           "bg-[hsl(217_33%_17%)] border-r border-border",
-          "lg:translate-x-0 lg:static"
+          "transition-transform duration-300 ease-in-out",
+          "lg:relative lg:translate-x-0",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Header */}
@@ -101,7 +100,7 @@ export function DashboardSidebar({ isOpen, onClose, onSignOut }: DashboardSideba
             </div>
             <Button
               onClick={() => handleNavigation("/application")}
-              className="w-full btn-gradient text-primary-foreground font-semibold"
+              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-semibold"
             >
               Complete Application
             </Button>
@@ -162,7 +161,7 @@ export function DashboardSidebar({ isOpen, onClose, onSignOut }: DashboardSideba
             Sign Out
           </Button>
         </div>
-      </motion.aside>
+      </aside>
     </>
   );
 }
