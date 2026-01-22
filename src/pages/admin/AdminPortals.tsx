@@ -294,6 +294,7 @@ export default function AdminPortals() {
           existingConfig={selectedUser.config}
           userName={`${selectedUser.first_name} ${selectedUser.last_name}`}
           userEmail={selectedUser.email}
+          userId={selectedUser.user_id}
         />
       )}
 

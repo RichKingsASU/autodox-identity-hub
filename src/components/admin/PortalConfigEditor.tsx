@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Palette, Image, Type, Save, X, ExternalLink } from "lucide-react";
+import { Palette, Image, Type, Save, X, Upload, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PortalConfig } from "@/hooks/usePortalConfig";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface PortalConfigEditorProps {
   isOpen: boolean;
@@ -25,6 +27,7 @@ interface PortalConfigEditorProps {
   existingConfig?: PortalConfig | null;
   userName: string;
   userEmail: string;
+  userId: string;
 }
 
 export function PortalConfigEditor({
@@ -34,26 +37,113 @@ export function PortalConfigEditor({
   existingConfig,
   userName,
   userEmail,
+  userId,
 }: PortalConfigEditorProps) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [brandName, setBrandName] = useState("My Portal");
   const [primaryColor, setPrimaryColor] = useState("#8B5CF6");
   const [secondaryColor, setSecondaryColor] = useState("#EC4899");
-  const [logoUrl, setLogoUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (existingConfig) {
       setBrandName(existingConfig.brand_name);
       setPrimaryColor(existingConfig.primary_color);
       setSecondaryColor(existingConfig.secondary_color);
-      setLogoUrl(existingConfig.logo_url || "");
+      setLogoUrl(existingConfig.logo_url || null);
     } else {
       setBrandName("My Portal");
       setPrimaryColor("#8B5CF6");
       setSecondaryColor("#EC4899");
-      setLogoUrl("");
+      setLogoUrl(null);
     }
   }, [existingConfig, isOpen]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file type",
+        description: "Please upload an image file (PNG, JPG, SVG, etc.)",
+      });
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        variant: "destructive",
+        title: "File too large",
+        description: "Please upload an image smaller than 2MB",
+      });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Create a unique file path
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+
+      // Delete old logo if exists
+      if (logoUrl) {
+        const oldPath = logoUrl.split("/portal-logos/")[1];
+        if (oldPath) {
+          await supabase.storage.from("portal-logos").remove([oldPath]);
+        }
+      }
+
+      // Upload new logo
+      const { data, error } = await supabase.storage
+        .from("portal-logos")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("portal-logos")
+        .getPublicUrl(data.path);
+
+      setLogoUrl(urlData.publicUrl);
+      toast({
+        title: "Logo uploaded",
+        description: "Your logo has been uploaded successfully",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message || "Failed to upload logo",
+      });
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (logoUrl) {
+      const oldPath = logoUrl.split("/portal-logos/")[1];
+      if (oldPath) {
+        await supabase.storage.from("portal-logos").remove([oldPath]);
+      }
+    }
+    setLogoUrl(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +153,7 @@ export function PortalConfigEditor({
         brand_name: brandName,
         primary_color: primaryColor,
         secondary_color: secondaryColor,
-        logo_url: logoUrl || null,
+        logo_url: logoUrl,
       });
       onClose();
     } catch (err) {
@@ -155,33 +245,80 @@ export function PortalConfigEditor({
             </div>
           </div>
 
-          {/* Logo URL */}
+          {/* Logo Upload */}
           <div className="space-y-2">
-            <Label htmlFor="logo-url" className="flex items-center gap-2">
+            <Label className="flex items-center gap-2">
               <Image className="h-4 w-4" />
-              Logo URL
+              Logo
             </Label>
-            <Input
-              id="logo-url"
-              type="url"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://example.com/logo.png"
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
             />
-            {logoUrl && (
-              <div className="flex items-center gap-2 mt-2">
-                <div className="h-12 w-12 rounded-lg border border-border bg-muted flex items-center justify-center overflow-hidden">
+            
+            {logoUrl ? (
+              <div className="flex items-center gap-4 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="h-16 w-16 rounded-lg border border-border bg-background flex items-center justify-center overflow-hidden">
                   <img
                     src={logoUrl}
                     alt="Logo preview"
                     className="h-full w-full object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
                   />
                 </div>
-                <span className="text-xs text-muted-foreground">Logo preview</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Logo uploaded</p>
+                  <p className="text-xs text-muted-foreground">Click below to change or remove</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    Change
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemoveLogo}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full h-24 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 transition-colors flex flex-col items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {uploading ? (
+                  <>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="h-6 w-6 border-2 border-primary/30 border-t-primary rounded-full"
+                    />
+                    <span className="text-sm text-muted-foreground">Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Click to upload logo (max 2MB)
+                    </span>
+                  </>
+                )}
+              </button>
             )}
           </div>
 
@@ -205,9 +342,6 @@ export function PortalConfigEditor({
                     src={logoUrl}
                     alt="Logo"
                     className="h-8 w-8 rounded object-contain bg-white/20"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
                   />
                 )}
                 <span className="font-semibold text-white">{brandName || "Brand Name"}</span>
@@ -238,7 +372,7 @@ export function PortalConfigEditor({
               <X className="h-4 w-4 mr-2" />
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || uploading}>
               <Save className="h-4 w-4 mr-2" />
               {saving ? "Saving..." : existingConfig ? "Update Portal" : "Create Portal"}
             </Button>
