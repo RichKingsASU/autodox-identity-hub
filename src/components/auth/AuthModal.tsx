@@ -2,13 +2,17 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { RecessedInput } from "@/components/ui/RecessedInput";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ArrowRight, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sparkles, ArrowRight, X, Wand2 } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { EmailVerificationScreen } from "./EmailVerificationScreen";
+import { PasswordStrengthMeter } from "./PasswordStrengthMeter";
+import { PasswordGenerator } from "@/components/ui/PasswordGenerator";
 
 const signUpSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -16,6 +20,10 @@ const signUpSchema = z.object({
   email: z.string().email("Invalid email address"),
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 const signInSchema = z.object({
@@ -48,6 +56,7 @@ export function AuthModal({
   const [verificationEmail, setVerificationEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generatorOpen, setGeneratorOpen] = useState(false);
   const { signIn, signUp } = useAuth();
   const { toast } = useToast();
 
@@ -57,6 +66,7 @@ export function AuthModal({
     email: prefillData?.email || "",
     phone: prefillData?.phone || "",
     password: "",
+    confirmPassword: "",
   });
 
   const handleChange = (field: string, value: string) => {
@@ -64,7 +74,24 @@ export function AuthModal({
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
     }
+    // Clear confirmPassword error when either password field changes
+    if ((field === "password" || field === "confirmPassword") && errors.confirmPassword) {
+      setErrors((prev) => ({ ...prev, confirmPassword: "" }));
+    }
   };
+
+  const handleGeneratedPassword = (password: string) => {
+    setFormData((prev) => ({ 
+      ...prev, 
+      password, 
+      confirmPassword: password 
+    }));
+    setErrors((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+    setGeneratorOpen(false);
+  };
+
+  const passwordsMatch = formData.password && formData.confirmPassword && 
+    formData.password === formData.confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +126,6 @@ export function AuthModal({
             description: error.message,
           });
         } else if (data?.session) {
-          // User is auto-confirmed, close modal and proceed
           toast({
             title: "Account created!",
             description: "Welcome to Autodox.",
@@ -107,7 +133,6 @@ export function AuthModal({
           onSuccess?.();
           onClose();
         } else {
-          // Email confirmation required, show verification screen
           setVerificationEmail(formData.email);
           setShowVerification(true);
         }
@@ -149,7 +174,6 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
-  // Show verification screen after signup
   if (showVerification) {
     return (
       <EmailVerificationScreen
@@ -175,7 +199,7 @@ export function AuthModal({
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="w-full max-w-md relative"
+        className="w-full max-w-md relative max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -248,14 +272,68 @@ export function AuthModal({
             error={errors.email}
           />
 
-          <RecessedInput
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            value={formData.password}
-            onChange={(e) => handleChange("password", e.target.value)}
-            error={errors.password}
-          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-muted-foreground">
+                Password
+              </label>
+              {mode === "signup" && (
+                <Popover open={generatorOpen} onOpenChange={setGeneratorOpen}>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 px-2 text-xs text-primary hover:text-primary"
+                    >
+                      <Wand2 className="h-3 w-3 mr-1" />
+                      Generate
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80" align="end">
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">Password Generator</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Generate a strong, secure password
+                      </p>
+                      <PasswordGenerator 
+                        onSelect={handleGeneratedPassword} 
+                        defaultLength={16}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+            <PasswordInput
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={(e) => handleChange("password", e.target.value)}
+              error={errors.password}
+            />
+            {mode === "signup" && formData.password && (
+              <PasswordStrengthMeter password={formData.password} />
+            )}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {mode === "signup" && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <PasswordInput
+                  label="Confirm Password"
+                  placeholder="••••••••"
+                  value={formData.confirmPassword}
+                  onChange={(e) => handleChange("confirmPassword", e.target.value)}
+                  error={errors.confirmPassword}
+                  isValid={passwordsMatch}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <GradientButton
             type="submit"
