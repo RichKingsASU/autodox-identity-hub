@@ -14,6 +14,18 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPortals from "./pages/admin/AdminPortals";
 import MyPortal from "./pages/MyPortal";
 
+// Dashboard pages
+import { DashboardLayout } from "./components/dashboard/DashboardLayout";
+import Overview from "./pages/dashboard/Overview";
+import Contacts from "./pages/dashboard/Contacts";
+import APIKeys from "./pages/dashboard/APIKeys";
+import Analytics from "./pages/dashboard/Analytics";
+import Billing from "./pages/dashboard/Billing";
+import Integrations from "./pages/dashboard/Integrations";
+import Support from "./pages/dashboard/Support";
+import Settings from "./pages/dashboard/Settings";
+import ApplicationPage from "./pages/ApplicationPage";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -27,8 +39,23 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           
-          {/* User Portal Route */}
+          {/* Application wizard */}
+          <Route path="/application" element={<ApplicationPage />} />
+          
+          {/* User Portal Route (legacy) */}
           <Route path="/my-portal" element={<MyPortal />} />
+          
+          {/* Dashboard Routes */}
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<Overview />} />
+            <Route path="contacts" element={<Contacts />} />
+            <Route path="api-keys" element={<APIKeys />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="integrations" element={<Integrations />} />
+            <Route path="support" element={<Support />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
           
           {/* Admin Console Routes */}
           <Route path="/admin" element={<AdminLayout />}>

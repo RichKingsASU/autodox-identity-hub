@@ -45,11 +45,12 @@ const Index = () => {
     if (isAdmin) {
       redirectHandled.current = true;
       navigate("/admin");
-    } else if (application?.status === "approved") {
+    } else if (user) {
+      // Redirect authenticated users to dashboard
       redirectHandled.current = true;
-      navigate("/my-portal");
+      navigate("/dashboard");
     }
-  }, [user, isAdmin, adminLoading, application?.status, navigate]);
+  }, [user, isAdmin, adminLoading, navigate]);
 
   // Fallback timeout to prevent infinite loading
   useEffect(() => {

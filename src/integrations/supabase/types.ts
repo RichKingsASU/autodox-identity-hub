@@ -166,32 +166,74 @@ export type Database = {
       }
       profiles: {
         Row: {
+          company_name: string | null
           created_at: string
           email: string
           first_name: string
           id: string
           last_name: string
           phone: string | null
+          sms_volume: string | null
           updated_at: string
           user_id: string
+          website: string | null
         }
         Insert: {
+          company_name?: string | null
           created_at?: string
           email: string
           first_name: string
           id?: string
           last_name: string
           phone?: string | null
+          sms_volume?: string | null
           updated_at?: string
           user_id: string
+          website?: string | null
         }
         Update: {
+          company_name?: string | null
           created_at?: string
           email?: string
           first_name?: string
           id?: string
           last_name?: string
           phone?: string | null
+          sms_volume?: string | null
+          updated_at?: string
+          user_id?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
+      tickets: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          priority: string
+          status: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          priority?: string
+          status?: string
+          subject: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          priority?: string
+          status?: string
+          subject?: string
           updated_at?: string
           user_id?: string
         }
