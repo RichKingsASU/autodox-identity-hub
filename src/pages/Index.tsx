@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Terminal } from "lucide-react";
@@ -27,6 +27,24 @@ const Index = () => {
     email?: string;
     phone?: string;
   }>({});
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fallback timeout to prevent infinite loading
+  useEffect(() => {
+    if (loading && !loadingTimedOut) {
+      timeoutRef.current = setTimeout(() => {
+        setLoadingTimedOut(true);
+      }, 3000);
+    }
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [loading, loadingTimedOut]);
+
+  const isActuallyLoading = loading && !loadingTimedOut;
 
   // Determine app state based on auth and application status
   const getAppState = (): AppState => {
@@ -35,7 +53,7 @@ const Index = () => {
     return "dashboard";
   };
 
-  const appState = loading ? "landing" : getAppState();
+  const appState = isActuallyLoading ? "landing" : getAppState();
   const isPending = application?.status === "pending";
 
   const handleLeadComplete = (data: {
@@ -58,7 +76,7 @@ const Index = () => {
     await signOut();
   };
 
-  if (loading) {
+  if (isActuallyLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <motion.div
