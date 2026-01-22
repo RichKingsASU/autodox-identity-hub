@@ -210,6 +210,7 @@ const Index = () => {
           <AuthModal
             isOpen={showAuthModal}
             onClose={() => setShowAuthModal(false)}
+            onSuccess={() => setShowAuthModal(false)}
             initialMode={authMode}
             prefillData={prefillData}
           />
