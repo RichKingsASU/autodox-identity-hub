@@ -16,6 +16,7 @@ const statusPillVariants = cva(
         resolved: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
         failed: "bg-rose-500/20 text-rose-400 border border-rose-500/30",
         error: "bg-rose-500/20 text-rose-400 border border-rose-500/30",
+        rejected: "bg-rose-500/20 text-rose-400 border border-rose-500/30",
         suspended: "bg-rose-500/20 text-rose-400 border border-rose-500/30",
         pending: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
         review: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
@@ -46,7 +47,7 @@ const StatusPill = React.forwardRef<HTMLSpanElement, StatusPillProps>(
         <span className={cn(
           "h-1.5 w-1.5 rounded-full",
           status === "delivered" || status === "success" || status === "active" || status === "approved" || status === "verified" || status === "resolved" ? "bg-emerald-400" :
-          status === "failed" || status === "error" || status === "suspended" ? "bg-rose-400" :
+          status === "failed" || status === "error" || status === "rejected" || status === "suspended" ? "bg-rose-400" :
           status === "pending" || status === "review" || status === "in_progress" ? "bg-amber-400" :
           status === "open" ? "bg-blue-400" :
           "bg-slate-400"

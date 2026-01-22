@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Shield } from "lucide-react";
@@ -10,6 +10,22 @@ import { GlassCard } from "@/components/ui/GlassCard";
 export default function AdminLayout() {
   const { user, isAdmin, isSuperAdmin, loading } = useAdminAuth();
   const navigate = useNavigate();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Fetch pending applications count
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      const { count } = await supabase
+        .from("applications")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
+      setPendingCount(count || 0);
+    };
+    
+    if (isAdmin) {
+      fetchPendingCount();
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,7 +80,7 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <AdminSidebar isSuperAdmin={isSuperAdmin} onSignOut={handleSignOut} />
+      <AdminSidebar isSuperAdmin={isSuperAdmin} onSignOut={handleSignOut} pendingApplicationsCount={pendingCount} />
       <main className="flex-1 min-w-0 overflow-auto">
         <Outlet />
       </main>

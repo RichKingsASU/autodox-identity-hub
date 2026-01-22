@@ -8,7 +8,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Palette
+  Palette,
+  ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -16,10 +17,12 @@ import { useState } from "react";
 interface AdminSidebarProps {
   isSuperAdmin: boolean;
   onSignOut: () => void;
+  pendingApplicationsCount?: number;
 }
 
 const navItems = [
   { icon: LayoutDashboard, label: "Overview", path: "/admin" },
+  { icon: ClipboardList, label: "Applications", path: "/admin/applications", hasBadge: true },
   { icon: Building2, label: "Brands", path: "/admin/brands" },
   { icon: Users, label: "Users", path: "/admin/users" },
   { icon: Palette, label: "Portal Configs", path: "/admin/portals" },
@@ -30,7 +33,7 @@ const superAdminItems = [
   { icon: Shield, label: "Access Control", path: "/admin/access" },
 ];
 
-export function AdminSidebar({ isSuperAdmin, onSignOut }: AdminSidebarProps) {
+export function AdminSidebar({ isSuperAdmin, onSignOut, pendingApplicationsCount = 0 }: AdminSidebarProps) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -61,6 +64,7 @@ export function AdminSidebar({ isSuperAdmin, onSignOut }: AdminSidebarProps) {
         {allItems.map((item) => {
           const isActive = location.pathname === item.path || 
             (item.path !== "/admin" && location.pathname.startsWith(item.path));
+          const showBadge = 'hasBadge' in item && item.hasBadge && pendingApplicationsCount > 0;
           
           return (
             <NavLink
@@ -74,7 +78,14 @@ export function AdminSidebar({ isSuperAdmin, onSignOut }: AdminSidebarProps) {
               )}
             >
               <item.icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && <span className="font-medium">{item.label}</span>}
+              {!collapsed && (
+                <span className="font-medium flex-1">{item.label}</span>
+              )}
+              {!collapsed && showBadge && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-500 rounded-full">
+                  {pendingApplicationsCount}
+                </span>
+              )}
             </NavLink>
           );
         })}
