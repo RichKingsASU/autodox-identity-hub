@@ -131,6 +131,39 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_configs: {
+        Row: {
+          brand_name: string
+          created_at: string
+          id: string
+          logo_url: string | null
+          primary_color: string
+          secondary_color: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          brand_name?: string
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          brand_name?: string
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

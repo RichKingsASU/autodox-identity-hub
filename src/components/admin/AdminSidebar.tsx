@@ -7,7 +7,8 @@ import {
   Shield,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Palette
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -21,6 +22,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Overview", path: "/admin" },
   { icon: Building2, label: "Brands", path: "/admin/brands" },
   { icon: Users, label: "Users", path: "/admin/users" },
+  { icon: Palette, label: "Portal Configs", path: "/admin/portals" },
   { icon: Settings, label: "Settings", path: "/admin/settings" },
 ];
 
