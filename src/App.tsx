@@ -10,6 +10,8 @@ import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminPortals from "./pages/admin/AdminPortals";
+import MyPortal from "./pages/MyPortal";
 
 const queryClient = new QueryClient();
 
@@ -23,11 +25,15 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/contact" element={<Contact />} />
           
+          {/* User Portal Route */}
+          <Route path="/my-portal" element={<MyPortal />} />
+          
           {/* Admin Console Routes */}
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="brands" element={<AdminBrands />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="portals" element={<AdminPortals />} />
           </Route>
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
