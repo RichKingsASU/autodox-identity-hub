@@ -32,6 +32,7 @@ const Index = () => {
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const welcomeToastShown = useRef(false);
+  const previousStatusRef = useRef<string | null>(null);
 
   // Fallback timeout to prevent infinite loading
   useEffect(() => {
@@ -71,6 +72,28 @@ const Index = () => {
       });
     }
   }, [appState, isPending, toast]);
+
+  // Real-time status change notifications
+  useEffect(() => {
+    const currentStatus = application?.status ?? null;
+    
+    if (previousStatusRef.current !== null && currentStatus !== null) {
+      if (previousStatusRef.current === "pending" && currentStatus === "approved") {
+        toast({
+          title: "🎉 Application Approved!",
+          description: "Congratulations! You now have full access to all features.",
+        });
+      } else if (previousStatusRef.current === "pending" && currentStatus === "rejected") {
+        toast({
+          variant: "destructive",
+          title: "Application Not Approved",
+          description: "Please contact support for more information.",
+        });
+      }
+    }
+    
+    previousStatusRef.current = currentStatus;
+  }, [application?.status, toast]);
 
   const handleLeadComplete = (data: {
     firstName: string;

@@ -51,6 +51,33 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
+    let applicationChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    const setupRealtimeSubscription = (userId: string) => {
+      // Clean up existing channel if any
+      if (applicationChannel) {
+        supabase.removeChannel(applicationChannel);
+      }
+
+      // Set up realtime subscription for application status changes
+      applicationChannel = supabase
+        .channel(`application-status-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'applications',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const newApplication = payload.new as Application;
+            setApplication(newApplication);
+          }
+        )
+        .subscribe();
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -62,10 +89,15 @@ export function useAuth() {
           setTimeout(() => {
             fetchProfile(session.user.id);
             fetchApplication(session.user.id);
+            setupRealtimeSubscription(session.user.id);
           }, 0);
         } else {
           setProfile(null);
           setApplication(null);
+          if (applicationChannel) {
+            supabase.removeChannel(applicationChannel);
+            applicationChannel = null;
+          }
         }
         setLoading(false);
       }
@@ -78,11 +110,17 @@ export function useAuth() {
       if (session?.user) {
         fetchProfile(session.user.id);
         fetchApplication(session.user.id);
+        setupRealtimeSubscription(session.user.id);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (applicationChannel) {
+        supabase.removeChannel(applicationChannel);
+      }
+    };
   }, [fetchProfile, fetchApplication]);
 
   const signUp = async (
