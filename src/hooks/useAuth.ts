@@ -153,10 +153,44 @@ export function useAuth() {
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    // First, trigger Supabase's password reset to generate the token
+    const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    return { error };
+
+    if (supabaseError) {
+      return { error: supabaseError };
+    }
+
+    // Then send our custom branded email via Resend
+    try {
+      // Get user's name if they have a profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("first_name")
+        .eq("email", email)
+        .single();
+
+      const resetLink = `${window.location.origin}/reset-password`;
+      
+      const response = await supabase.functions.invoke("send-password-reset", {
+        body: {
+          email,
+          resetLink,
+          userName: profileData?.first_name,
+        },
+      });
+
+      if (response.error) {
+        console.error("Custom email failed, but Supabase email was sent:", response.error);
+        // Don't return error - the Supabase default email was still sent
+      }
+    } catch (err) {
+      console.error("Failed to send custom email:", err);
+      // Don't fail - Supabase's default email should still work
+    }
+
+    return { error: null };
   };
 
   const updatePassword = async (newPassword: string) => {
