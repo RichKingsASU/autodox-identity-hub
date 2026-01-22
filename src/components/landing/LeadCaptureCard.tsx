@@ -6,6 +6,7 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowRight, Shield, Sparkles } from "lucide-react";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
 
 const leadSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -19,6 +20,7 @@ interface LeadCaptureCardProps {
 }
 
 export function LeadCaptureCard({ onComplete }: LeadCaptureCardProps) {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -85,6 +87,11 @@ export function LeadCaptureCard({ onComplete }: LeadCaptureCardProps) {
     
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 800));
+    
+    toast({
+      title: "Great start!",
+      description: "Now let's create your account to continue.",
+    });
     
     onComplete(formData);
   };

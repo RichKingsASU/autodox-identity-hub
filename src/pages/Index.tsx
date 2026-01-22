@@ -13,12 +13,14 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 type AppState = "landing" | "application" | "dashboard";
 
 const Index = () => {
   const navigate = useNavigate();
   const { user, profile, application, loading, signOut } = useAuth();
+  const { toast } = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [prefillData, setPrefillData] = useState<{
@@ -29,6 +31,7 @@ const Index = () => {
   }>({});
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const welcomeToastShown = useRef(false);
 
   // Fallback timeout to prevent infinite loading
   useEffect(() => {
@@ -56,6 +59,19 @@ const Index = () => {
   const appState = isActuallyLoading ? "landing" : getAppState();
   const isPending = application?.status === "pending";
 
+  // Show welcome toast when user first arrives at dashboard
+  useEffect(() => {
+    if (appState === "dashboard" && !welcomeToastShown.current) {
+      welcomeToastShown.current = true;
+      toast({
+        title: isPending ? "Application submitted!" : "Welcome back!",
+        description: isPending 
+          ? "Your application is under review. We'll notify you once approved."
+          : "Your dashboard is ready. Start processing verifications.",
+      });
+    }
+  }, [appState, isPending, toast]);
+
   const handleLeadComplete = (data: {
     firstName: string;
     lastName: string;
@@ -73,7 +89,19 @@ const Index = () => {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Sign out failed",
+        description: error.message,
+      });
+    } else {
+      toast({
+        title: "Signed out",
+        description: "You have been successfully signed out.",
+      });
+    }
   };
 
   if (isActuallyLoading) {

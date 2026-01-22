@@ -223,9 +223,19 @@ export function ApplicationStepper({ userData }: ApplicationStepperProps) {
     if (validateStep(currentStep)) {
       if (currentStep < steps.length - 1) {
         setCurrentStep((prev) => prev + 1);
+        toast({
+          title: `Step ${currentStep + 1} completed`,
+          description: `Moving to ${steps[currentStep + 1].title}`,
+        });
       } else {
         handleSubmit();
       }
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Please check your input",
+        description: "Some required fields are missing or invalid.",
+      });
     }
   };
 

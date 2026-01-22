@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 
 interface DashboardShellProps {
   isPending?: boolean;
@@ -46,6 +47,17 @@ export function DashboardShell({ isPending = false, userName, onSignOut }: Dashb
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiEnvironment, setApiEnvironment] = useState<ApiEnvironment>("sandbox");
+  const { toast } = useToast();
+
+  const handleEnvironmentSwitch = (env: ApiEnvironment) => {
+    setApiEnvironment(env);
+    toast({
+      title: "Environment switched",
+      description: env === "production" 
+        ? "You are now in Production mode. API calls will affect live data."
+        : "You are now in Sandbox mode. API calls will use test data.",
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -155,7 +167,7 @@ export function DashboardShell({ isPending = false, userName, onSignOut }: Dashb
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover border border-border">
               <DropdownMenuItem
-                onClick={() => setApiEnvironment("sandbox")}
+                onClick={() => handleEnvironmentSwitch("sandbox")}
                 className={cn(
                   "flex items-center gap-2 cursor-pointer",
                   apiEnvironment === "sandbox" && "bg-accent"
@@ -168,7 +180,7 @@ export function DashboardShell({ isPending = false, userName, onSignOut }: Dashb
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setApiEnvironment("production")}
+                onClick={() => handleEnvironmentSwitch("production")}
                 className={cn(
                   "flex items-center gap-2 cursor-pointer",
                   apiEnvironment === "production" && "bg-accent"
