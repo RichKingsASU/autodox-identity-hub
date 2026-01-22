@@ -136,6 +136,22 @@ export function useAuth() {
         data: metadata,
       },
     });
+
+    // Send custom branded verification email via Resend
+    if (data?.user && !error) {
+      try {
+        await supabase.functions.invoke("send-signup-verification", {
+          body: {
+            email,
+            userName: metadata.first_name,
+          },
+        });
+      } catch (err) {
+        console.error("Failed to send custom verification email:", err);
+        // Don't fail signup - Supabase's default email was still sent
+      }
+    }
+
     return { data, error };
   };
 
