@@ -14,6 +14,8 @@ import AdminBrands from "./pages/admin/AdminBrands";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPortals from "./pages/admin/AdminPortals";
 import AdminTemplates from "./pages/admin/AdminTemplates";
+import AdminSettings from "./pages/admin/AdminSettings";
+import AdminAccess from "./pages/admin/AdminAccess";
 import MyPortal from "./pages/MyPortal";
 
 // Dashboard pages
@@ -67,6 +69,8 @@ const App = () => (
             <Route path="templates" element={<AdminTemplates />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="portals" element={<AdminPortals />} />
+            <Route path="settings" element={<AdminSettings />} />
+            <Route path="access" element={<AdminAccess />} />
           </Route>
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
