@@ -1,96 +1,169 @@
 
+# Build Missing Admin Pages: Settings & Access Control
 
-# Fix: Templates Not Visible Due to RLS + Mock Auth Mismatch
+## Overview
 
-## Problem Identified
-
-The `DEV_BYPASS` in `useAdminAuth.ts` creates a fake user object on the client side, but **it doesn't establish a real Supabase auth session**. When `useTemplates` queries the database:
-
-```
-RLS Policy: is_admin(auth.uid())
-           ↓
-auth.uid() = NULL (no real session)
-           ↓
-is_admin(NULL) = false
-           ↓
-Query returns 0 rows
-```
-
-The 60 templates exist in the database but are blocked by RLS.
+This plan creates two new admin pages to complete the admin console:
+1. **Admin Settings** (`/admin/settings`) - System configuration for all admins
+2. **Access Control** (`/admin/access`) - Super admin-only role management
 
 ---
 
-## Solution Options
+## Page 1: Admin Settings
 
-### Option A: Add Service Role Key for Dev Bypass (Not Recommended)
-Using service role bypasses RLS but exposes the key client-side - **security risk**.
+### Purpose
+Centralized system configuration for email templates, rate limits, feature flags, and platform defaults.
 
-### Option B: Disable RLS in Development (Not Recommended)
-Would require database changes and risks shipping insecure code.
+### UI Structure
+Uses tabbed interface (matching existing `Settings.tsx` pattern) with GlassCard sections:
 
-### Option C: Sign In with Real Admin Account (Recommended)
-Use existing admin credentials to establish a real Supabase session.
+| Tab | Contents |
+|-----|----------|
+| **General** | Platform name, support email, default brand settings |
+| **Email Templates** | Configure sender name, reply-to address, email signature |
+| **Rate Limits** | Default API rate limits, SMS monthly caps |
+| **Feature Flags** | Toggle maintenance mode, beta features, debug logging |
 
-### Option D: Add Public Read Policy for Templates (Recommended)
-Templates are configuration data, not sensitive. A read-only public policy is safe.
+### Components to Create
+
+**File: `src/pages/admin/AdminSettings.tsx`**
+- Header with Settings icon and description
+- Tabs component with 4 tabs
+- GlassCard sections for each configuration group
+- Form inputs with save functionality
+- Toast notifications on save
+
+### Data Storage
+For now, settings will be stored in localStorage as a stopgap (no new database table needed). A future iteration could add a `system_settings` table.
 
 ---
 
-## Recommended Fix: Option D
+## Page 2: Access Control (Super Admin Only)
 
-Add a public SELECT policy for `landing_templates` since template metadata is not sensitive (they're just landing page configurations). This also supports future public portal rendering.
+### Purpose
+Manage admin roles, view role assignments, and audit privilege changes. Only visible to super_admins per existing sidebar logic.
 
-### Database Change
+### UI Structure
 
-```sql
--- Allow anyone to read templates (they're public configuration)
-CREATE POLICY "Anyone can view published templates"
-ON public.landing_templates
-FOR SELECT
-TO anon, authenticated
-USING (status = 'published');
+| Section | Contents |
+|---------|----------|
+| **Role Overview** | Cards showing count of super_admins, admins, and regular users |
+| **Role Assignments Table** | List of all users with admin/super_admin roles |
+| **Audit Log** | Recent role changes (placeholder for future audit table) |
 
--- Keep admin-only policy for all templates (including drafts)
--- The existing "Admins can view all templates" policy handles this
-```
+### Components to Create
 
-This allows:
-- **Anonymous/unauthenticated users**: Can see `published` templates only
-- **Admins**: Can see ALL templates (draft, published, disabled) via existing policy
+**File: `src/pages/admin/AdminAccess.tsx`**
+- Header with Shield icon
+- Stats cards for role distribution
+- Data table of privileged users (admins + super_admins)
+- Role upgrade/downgrade actions with confirmation dialogs
+- Ability to grant super_admin role (super_admin exclusive)
+
+**File: `src/hooks/useRoleManagement.ts`**
+- Query for users with elevated roles
+- Mutations for granting/revoking roles
+- Leverages existing `user_roles` table
+
+### Security Notes
+- Page visibility already gated by `AdminSidebar` (only shows for `isSuperAdmin`)
+- RLS policy `has_role(auth.uid(), 'super_admin')` protects role table mutations
+- All role changes require confirmation dialog
 
 ---
 
 ## Implementation Steps
 
-| Step | Action |
-|------|--------|
-| 1 | Create migration to add public SELECT policy for published templates |
-| 2 | Test that templates appear in admin UI with DEV_BYPASS active |
-| 3 | Verify drafts/disabled templates only visible to real admin sessions |
+### Step 1: Create Admin Settings Page
+1. Create `src/pages/admin/AdminSettings.tsx`
+2. Implement tabbed UI with General, Email, Rate Limits, Feature Flags
+3. Add form state management with localStorage persistence
+4. Include save button with toast feedback
+
+### Step 2: Create Access Control Page
+1. Create `src/hooks/useRoleManagement.ts` for role queries/mutations
+2. Create `src/pages/admin/AdminAccess.tsx`
+3. Implement role overview stats cards
+4. Add privileged users table with role management actions
+5. Add confirmation dialogs for role changes
+
+### Step 3: Register Routes
+Update `src/App.tsx` to add:
+```typescript
+<Route path="settings" element={<AdminSettings />} />
+<Route path="access" element={<AdminAccess />} />
+```
 
 ---
 
-## Alternative Quick Fix
+## File Changes Summary
 
-If you prefer to test with full admin access immediately:
-
-1. **Disable DEV_BYPASS** (set to `false`)
-2. **Log in** with `richard1king1@gmail.com` (super_admin)
-3. Navigate to `/admin/templates`
-
-This establishes a real Supabase session where `auth.uid()` returns the actual user ID, and RLS policies work correctly.
+| File | Action |
+|------|--------|
+| `src/pages/admin/AdminSettings.tsx` | Create |
+| `src/pages/admin/AdminAccess.tsx` | Create |
+| `src/hooks/useRoleManagement.ts` | Create |
+| `src/App.tsx` | Modify (add 2 routes) |
 
 ---
 
 ## Technical Details
 
-**Current RLS on `landing_templates`:**
-- `Admins can view all templates` → `is_admin(auth.uid())`
-- `Admins can create templates` → `is_admin(auth.uid())`
-- `Admins can update templates` → `is_admin(auth.uid())`
+### Admin Settings State Shape
+```typescript
+interface AdminSettings {
+  general: {
+    platformName: string;
+    supportEmail: string;
+    defaultSmsLimit: number;
+  };
+  email: {
+    senderName: string;
+    replyToAddress: string;
+    signature: string;
+  };
+  features: {
+    maintenanceMode: boolean;
+    betaFeatures: boolean;
+    debugLogging: boolean;
+  };
+  rateLimits: {
+    apiRequestsPerMinute: number;
+    apiRequestsPerDay: number;
+    defaultMonthlySms: number;
+  };
+}
+```
 
-**Proposed Addition:**
-- `Anyone can view published templates` → `status = 'published'`
+### Role Management Hook Interface
+```typescript
+interface UseRoleManagement {
+  privilegedUsers: ProfileWithRoles[];
+  loading: boolean;
+  grantRole: (userId: string, role: AppRole) => Promise<void>;
+  revokeRole: (userId: string, role: AppRole) => Promise<void>;
+  stats: {
+    superAdminCount: number;
+    adminCount: number;
+    userCount: number;
+  };
+}
+```
 
-This maintains security for draft/disabled templates while allowing the dev bypass to work for published ones.
+### UI Patterns Used
+- `motion.div` for page animations (consistent with other admin pages)
+- `GlassCard` for section containers
+- `Tabs` component for settings organization
+- `AlertDialog` for destructive action confirmations
+- `StatusPill` for role badges
+- `DropdownMenu` for row actions
 
+---
+
+## Accessibility & UX
+
+- All form inputs have proper labels
+- Confirmation dialogs for destructive actions
+- Loading states with skeletons
+- Toast notifications for all save/error states
+- Responsive grid layouts for mobile compatibility
