@@ -58,6 +58,8 @@ export type Database = {
       }
       brands: {
         Row: {
+          active_template_id: string | null
+          applied_template_version: number | null
           created_at: string
           current_month_usage: number | null
           domain: string | null
@@ -65,12 +67,18 @@ export type Database = {
           monthly_sms_limit: number | null
           name: string
           owner_user_id: string | null
+          previous_template_id: string | null
+          previous_template_version: number | null
           settings: Json | null
           slug: string
           status: Database["public"]["Enums"]["brand_status"]
+          template_applied_at: string | null
+          template_applied_by: string | null
           updated_at: string
         }
         Insert: {
+          active_template_id?: string | null
+          applied_template_version?: number | null
           created_at?: string
           current_month_usage?: number | null
           domain?: string | null
@@ -78,12 +86,18 @@ export type Database = {
           monthly_sms_limit?: number | null
           name: string
           owner_user_id?: string | null
+          previous_template_id?: string | null
+          previous_template_version?: number | null
           settings?: Json | null
           slug: string
           status?: Database["public"]["Enums"]["brand_status"]
+          template_applied_at?: string | null
+          template_applied_by?: string | null
           updated_at?: string
         }
         Update: {
+          active_template_id?: string | null
+          applied_template_version?: number | null
           created_at?: string
           current_month_usage?: number | null
           domain?: string | null
@@ -91,12 +105,31 @@ export type Database = {
           monthly_sms_limit?: number | null
           name?: string
           owner_user_id?: string | null
+          previous_template_id?: string | null
+          previous_template_version?: number | null
           settings?: Json | null
           slug?: string
           status?: Database["public"]["Enums"]["brand_status"]
+          template_applied_at?: string | null
+          template_applied_by?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "brands_active_template_id_fkey"
+            columns: ["active_template_id"]
+            isOneToOne: false
+            referencedRelation: "landing_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brands_previous_template_id_fkey"
+            columns: ["previous_template_id"]
+            isOneToOne: false
+            referencedRelation: "landing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contact_submissions: {
         Row: {
@@ -128,6 +161,54 @@ export type Database = {
           name?: string
           responded_at?: string | null
           status?: string
+        }
+        Relationships: []
+      }
+      landing_templates: {
+        Row: {
+          base_layout: Database["public"]["Enums"]["landing_base_layout"]
+          category: string | null
+          created_at: string | null
+          default_copy: Json
+          default_theme_overrides: Json
+          editable_fields: Json
+          id: string
+          name: string
+          sections_enabled: Json
+          slug: string
+          status: Database["public"]["Enums"]["template_status"]
+          updated_at: string | null
+          version: number
+        }
+        Insert: {
+          base_layout: Database["public"]["Enums"]["landing_base_layout"]
+          category?: string | null
+          created_at?: string | null
+          default_copy: Json
+          default_theme_overrides: Json
+          editable_fields: Json
+          id?: string
+          name: string
+          sections_enabled: Json
+          slug: string
+          status?: Database["public"]["Enums"]["template_status"]
+          updated_at?: string | null
+          version?: number
+        }
+        Update: {
+          base_layout?: Database["public"]["Enums"]["landing_base_layout"]
+          category?: string | null
+          created_at?: string | null
+          default_copy?: Json
+          default_theme_overrides?: Json
+          editable_fields?: Json
+          id?: string
+          name?: string
+          sections_enabled?: Json
+          slug?: string
+          status?: Database["public"]["Enums"]["template_status"]
+          updated_at?: string | null
+          version?: number
         }
         Relationships: []
       }
@@ -206,6 +287,54 @@ export type Database = {
         }
         Relationships: []
       }
+      template_activity_log: {
+        Row: {
+          action: string
+          brand_id: string | null
+          changes: Json | null
+          id: string
+          performed_at: string | null
+          performed_by: string
+          template_id: string | null
+          template_slug: string
+        }
+        Insert: {
+          action: string
+          brand_id?: string | null
+          changes?: Json | null
+          id?: string
+          performed_at?: string | null
+          performed_by: string
+          template_id?: string | null
+          template_slug: string
+        }
+        Update: {
+          action?: string
+          brand_id?: string | null
+          changes?: Json | null
+          id?: string
+          performed_at?: string | null
+          performed_by?: string
+          template_id?: string | null
+          template_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_activity_log_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "template_activity_log_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "landing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           created_at: string
@@ -278,6 +407,16 @@ export type Database = {
       app_role: "admin" | "super_admin" | "user"
       application_status: "pending" | "approved" | "rejected"
       brand_status: "provisioning" | "active" | "suspended" | "archived"
+      landing_base_layout:
+        | "hero_focused"
+        | "compliance_heavy"
+        | "trust_signal_dense"
+        | "minimal_enterprise"
+        | "sdk_focused"
+        | "global_reach"
+        | "security_first"
+        | "conversion_optimized"
+      template_status: "draft" | "published" | "disabled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -408,6 +547,17 @@ export const Constants = {
       app_role: ["admin", "super_admin", "user"],
       application_status: ["pending", "approved", "rejected"],
       brand_status: ["provisioning", "active", "suspended", "archived"],
+      landing_base_layout: [
+        "hero_focused",
+        "compliance_heavy",
+        "trust_signal_dense",
+        "minimal_enterprise",
+        "sdk_focused",
+        "global_reach",
+        "security_first",
+        "conversion_optimized",
+      ],
+      template_status: ["draft", "published", "disabled"],
     },
   },
 } as const
