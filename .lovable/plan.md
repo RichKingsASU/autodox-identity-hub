@@ -1,99 +1,96 @@
 
 
-# Add Demo Admin Account for Testing
+# Fix: Templates Not Visible Due to RLS + Mock Auth Mismatch
 
-## Current Situation
+## Problem Identified
 
-Your development environment has `DEV_BYPASS = true` enabled in `useAdminAuth.ts`, which automatically authenticates you as a super_admin. This is why you can currently access `/admin/templates`.
+The `DEV_BYPASS` in `useAdminAuth.ts` creates a fake user object on the client side, but **it doesn't establish a real Supabase auth session**. When `useTemplates` queries the database:
 
-**Existing Admin Accounts:**
-- richard1king1@gmail.com (super_admin)
-- richardking427@yahoo.com (admin)
+```
+RLS Policy: is_admin(auth.uid())
+           ↓
+auth.uid() = NULL (no real session)
+           ↓
+is_admin(NULL) = false
+           ↓
+Query returns 0 rows
+```
+
+The 60 templates exist in the database but are blocked by RLS.
 
 ---
 
-## Option A: Use Existing Accounts (Recommended for Quick Testing)
+## Solution Options
 
-Simply log in with one of the existing admin credentials through the normal auth flow.
+### Option A: Add Service Role Key for Dev Bypass (Not Recommended)
+Using service role bypasses RLS but exposes the key client-side - **security risk**.
+
+### Option B: Disable RLS in Development (Not Recommended)
+Would require database changes and risks shipping insecure code.
+
+### Option C: Sign In with Real Admin Account (Recommended)
+Use existing admin credentials to establish a real Supabase session.
+
+### Option D: Add Public Read Policy for Templates (Recommended)
+Templates are configuration data, not sensitive. A read-only public policy is safe.
 
 ---
 
-## Option B: Create a Demo Admin Account
+## Recommended Fix: Option D
 
-If you need a fresh demo account, here's the implementation:
+Add a public SELECT policy for `landing_templates` since template metadata is not sensitive (they're just landing page configurations). This also supports future public portal rendering.
 
-### Step 1: Create User via Supabase Auth
-
-The demo admin user needs to be created through Supabase Auth first. This can be done by:
-1. Signing up through the normal UI flow, OR
-2. Using Supabase Dashboard to create a user directly
-
-**Demo Credentials:**
-- Email: `demo-admin@autodox.com`
-- Password: (user-defined during signup)
-
-### Step 2: Assign Admin Role
-
-After the user is created, insert a role record:
+### Database Change
 
 ```sql
-INSERT INTO user_roles (user_id, role)
-SELECT id, 'admin'::app_role
-FROM auth.users
-WHERE email = 'demo-admin@autodox.com';
+-- Allow anyone to read templates (they're public configuration)
+CREATE POLICY "Anyone can view published templates"
+ON public.landing_templates
+FOR SELECT
+TO anon, authenticated
+USING (status = 'published');
+
+-- Keep admin-only policy for all templates (including drafts)
+-- The existing "Admins can view all templates" policy handles this
 ```
 
-### Step 3: Create Profile (if not auto-created)
-
-```sql
-INSERT INTO profiles (user_id, first_name, last_name, email)
-SELECT id, 'Demo', 'Admin', 'demo-admin@autodox.com'
-FROM auth.users
-WHERE email = 'demo-admin@autodox.com'
-ON CONFLICT (user_id) DO NOTHING;
-```
-
----
-
-## Option C: Disable DEV_BYPASS for Production-Like Testing
-
-To test the actual authentication flow, update `useAdminAuth.ts`:
-
-```typescript
-// Change this line:
-const DEV_BYPASS = import.meta.env.DEV && true;
-
-// To:
-const DEV_BYPASS = import.meta.env.DEV && false;
-```
-
-Then log in with an existing admin account.
-
----
-
-## Recommended Approach
-
-For immediate testing of the Template Management System:
-
-1. **Keep DEV_BYPASS enabled** - You already have full super_admin access
-2. **Test all features**: Preview, Edit, Apply to Brand, Activity Log
-3. **Later**: Disable DEV_BYPASS and test with real admin credentials before production
+This allows:
+- **Anonymous/unauthenticated users**: Can see `published` templates only
+- **Admins**: Can see ALL templates (draft, published, disabled) via existing policy
 
 ---
 
 ## Implementation Steps
 
-| Step | Action | Method |
-|------|--------|--------|
-| 1 | Decide testing approach | Choose Option A, B, or C |
-| 2a | If Option A | Log in with existing admin email |
-| 2b | If Option B | Sign up new user + run SQL to assign role |
-| 2c | If Option C | Update DEV_BYPASS flag to false |
-| 3 | Navigate to /admin/templates | Test template management features |
+| Step | Action |
+|------|--------|
+| 1 | Create migration to add public SELECT policy for published templates |
+| 2 | Test that templates appear in admin UI with DEV_BYPASS active |
+| 3 | Verify drafts/disabled templates only visible to real admin sessions |
 
 ---
 
-## Security Note
+## Alternative Quick Fix
 
-The `DEV_BYPASS` flag is documented in project memory as a security finding that must be disabled before production deployment. This is intentional for development convenience but should never be deployed to production.
+If you prefer to test with full admin access immediately:
+
+1. **Disable DEV_BYPASS** (set to `false`)
+2. **Log in** with `richard1king1@gmail.com` (super_admin)
+3. Navigate to `/admin/templates`
+
+This establishes a real Supabase session where `auth.uid()` returns the actual user ID, and RLS policies work correctly.
+
+---
+
+## Technical Details
+
+**Current RLS on `landing_templates`:**
+- `Admins can view all templates` → `is_admin(auth.uid())`
+- `Admins can create templates` → `is_admin(auth.uid())`
+- `Admins can update templates` → `is_admin(auth.uid())`
+
+**Proposed Addition:**
+- `Anyone can view published templates` → `status = 'published'`
+
+This maintains security for draft/disabled templates while allowing the dev bypass to work for published ones.
 
