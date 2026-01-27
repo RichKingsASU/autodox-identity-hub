@@ -13,6 +13,7 @@ import AdminApplications from "./pages/admin/AdminApplications";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPortals from "./pages/admin/AdminPortals";
+import AdminTemplates from "./pages/admin/AdminTemplates";
 import MyPortal from "./pages/MyPortal";
 
 // Dashboard pages
@@ -63,6 +64,7 @@ const App = () => (
             <Route index element={<AdminDashboard />} />
             <Route path="applications" element={<AdminApplications />} />
             <Route path="brands" element={<AdminBrands />} />
+            <Route path="templates" element={<AdminTemplates />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="portals" element={<AdminPortals />} />
           </Route>
