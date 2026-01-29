@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type BrandStatus = "provisioning" | "active" | "suspended" | "archived";
+type DomainStatus = "pending" | "verifying" | "verified" | "provisioning_ssl" | "active" | "failed";
 
 export interface Brand {
   id: string;
@@ -16,6 +17,13 @@ export interface Brand {
   current_month_usage: number;
   created_at: string;
   updated_at: string;
+  // Domain management fields
+  domain_status: DomainStatus | null;
+  domain_verification_token: string | null;
+  domain_verified_at: string | null;
+  ssl_status: string | null;
+  cloudflare_hostname_id: string | null;
+  domain_error: string | null;
 }
 
 export interface CreateBrandData {

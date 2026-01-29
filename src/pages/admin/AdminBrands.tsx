@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandPortfolioTable } from "@/components/admin/BrandPortfolioTable";
 import { CreateBrandModal } from "@/components/admin/CreateBrandModal";
+import { EditBrandModal } from "@/components/admin/EditBrandModal";
 import { useBrands, Brand, CreateBrandData } from "@/hooks/useBrands";
 import {
   AlertDialog,
@@ -17,10 +18,11 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function AdminBrands() {
-  const { brands, loading, createBrand, updateBrandStatus, deleteBrand } = useBrands();
+  const { brands, loading, createBrand, updateBrandStatus, updateBrand, deleteBrand, fetchBrands } = useBrands();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Brand | null>(null);
 
   const handleCreate = async (data: CreateBrandData) => {
     setIsCreating(true);
@@ -33,8 +35,11 @@ export default function AdminBrands() {
   };
 
   const handleEdit = (brand: Brand) => {
-    // TODO: Implement edit modal
-    console.log("Edit brand:", brand);
+    setEditTarget(brand);
+  };
+
+  const handleSaveEdit = async (brandId: string, updates: Partial<Pick<Brand, "name" | "slug" | "domain" | "monthly_sms_limit">>) => {
+    return await updateBrand(brandId, updates);
   };
 
   const handleDeleteConfirm = async () => {
@@ -76,6 +81,14 @@ export default function AdminBrands() {
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreate}
         isLoading={isCreating}
+      />
+
+      <EditBrandModal
+        brand={editTarget}
+        isOpen={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={handleSaveEdit}
+        onRefresh={fetchBrands}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>

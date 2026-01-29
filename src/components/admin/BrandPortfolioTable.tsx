@@ -9,7 +9,11 @@ import {
   Pencil,
   Trash2,
   Power,
-  PowerOff
+  PowerOff,
+  Globe,
+  Loader2,
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import { Brand } from "@/hooks/useBrands";
@@ -39,6 +43,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface BrandPortfolioTableProps {
   brands: Brand[];
@@ -53,6 +63,17 @@ const statusMap: Record<Brand["status"], { label: string; pillStatus: "active" |
   active: { label: "Active", pillStatus: "active" },
   suspended: { label: "Suspended", pillStatus: "suspended" },
   archived: { label: "Archived", pillStatus: "unverified" },
+};
+
+type DomainStatus = "pending" | "verifying" | "verified" | "provisioning_ssl" | "active" | "failed";
+
+const domainStatusConfig: Record<DomainStatus, { label: string; icon: typeof Globe; color: string }> = {
+  pending: { label: "DNS Pending", icon: Globe, color: "text-amber-500" },
+  verifying: { label: "Verifying", icon: Loader2, color: "text-blue-500" },
+  verified: { label: "Verified", icon: Check, color: "text-green-500" },
+  provisioning_ssl: { label: "SSL Pending", icon: Loader2, color: "text-blue-500" },
+  active: { label: "Live", icon: Check, color: "text-green-500" },
+  failed: { label: "Failed", icon: AlertCircle, color: "text-destructive" },
 };
 
 export function BrandPortfolioTable({ 
@@ -133,6 +154,7 @@ export function BrandPortfolioTable({
               <TableHead>Brand</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Domain</TableHead>
+              <TableHead>Domain Status</TableHead>
               <TableHead>Usage</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="w-12"></TableHead>
@@ -141,7 +163,7 @@ export function BrandPortfolioTable({
           <TableBody>
             {filteredBrands.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                   <Building2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No brands found</p>
                 </TableCell>
@@ -182,6 +204,37 @@ export function BrandPortfolioTable({
                         {brand.domain}
                         <ExternalLink className="h-3 w-3" />
                       </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {(brand as any).domain_status ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <div className="flex items-center gap-1.5">
+                              {(() => {
+                                const status = (brand as any).domain_status as DomainStatus;
+                                const config = domainStatusConfig[status];
+                                const Icon = config.icon;
+                                const isAnimated = status === "verifying" || status === "provisioning_ssl";
+                                return (
+                                  <>
+                                    <Icon className={`h-4 w-4 ${config.color} ${isAnimated ? "animate-spin" : ""}`} />
+                                    <span className={`text-xs ${config.color}`}>{config.label}</span>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Domain: {brand.domain}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : brand.domain ? (
+                      <span className="text-xs text-muted-foreground">Not configured</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
