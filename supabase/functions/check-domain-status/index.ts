@@ -9,17 +9,13 @@ interface CheckDomainStatusRequest {
   brandId: string;
 }
 
-interface CloudflareHostnameResponse {
-  success: boolean;
-  result?: {
-    id: string;
-    hostname: string;
-    status: string;
-    ssl: {
-      status: string;
-    };
+interface NetlifyDomainResponse {
+  id: string;
+  hostname: string;
+  ssl?: {
+    state: string;
   };
-  errors?: Array<{ message: string }>;
+  verification_state?: string;
 }
 
 Deno.serve(async (req) => {
@@ -38,8 +34,8 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const cloudflareApiToken = Deno.env.get("CLOUDFLARE_API_TOKEN");
-    const cloudflareZoneId = Deno.env.get("CLOUDFLARE_ZONE_ID");
+    const netlifyToken = Deno.env.get("NETLIFY_ACCESS_TOKEN");
+    const netlifySiteId = Deno.env.get("NETLIFY_SITE_ID");
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -78,8 +74,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // If no Cloudflare hostname ID, just return current status
-    if (!brand.cloudflare_hostname_id || !cloudflareApiToken || !cloudflareZoneId) {
+    // If no Netlify domain ID, just return current status
+    if (!brand.cloudflare_hostname_id || !netlifyToken || !netlifySiteId) {
       return new Response(
         JSON.stringify({
           status: brand.domain_status,
@@ -90,40 +86,40 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check status with Cloudflare
-    const cloudflareUrl = `https://api.cloudflare.com/client/v4/zones/${cloudflareZoneId}/custom_hostnames/${brand.cloudflare_hostname_id}`;
+    // Check status with Netlify
+    const netlifyUrl = `https://api.netlify.com/api/v1/sites/${netlifySiteId}/domains/${brand.domain}`;
     
-    const response = await fetch(cloudflareUrl, {
+    const response = await fetch(netlifyUrl, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${cloudflareApiToken}`,
+        "Authorization": `Bearer ${netlifyToken}`,
         "Content-Type": "application/json",
       },
     });
 
-    const data: CloudflareHostnameResponse = await response.json();
-
-    if (!data.success || !data.result) {
+    if (!response.ok) {
       return new Response(
         JSON.stringify({
           status: brand.domain_status,
           sslStatus: brand.ssl_status,
-          error: data.errors?.[0]?.message || "Failed to check hostname status",
+          error: "Failed to check domain status with Netlify",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Update local status based on Cloudflare response
-    const sslStatus = data.result.ssl.status;
+    const data: NetlifyDomainResponse = await response.json();
+
+    // Update local status based on Netlify response
+    const sslStatus = data.ssl?.state || brand.ssl_status;
     let domainStatus = brand.domain_status;
 
-    if (sslStatus === "active") {
+    if (sslStatus === "active" || sslStatus === "issued") {
       domainStatus = "active";
-    } else if (sslStatus === "pending_validation" || sslStatus === "pending_issuance") {
+    } else if (sslStatus === "pending" || sslStatus === "pending_validation") {
       domainStatus = "provisioning_ssl";
-    } else if (sslStatus === "pending_deployment") {
-      domainStatus = "provisioning_ssl";
+    } else if (sslStatus === "failed") {
+      domainStatus = "failed";
     }
 
     // Update database if status changed
@@ -142,7 +138,7 @@ Deno.serve(async (req) => {
         status: domainStatus,
         sslStatus: sslStatus,
         domain: brand.domain,
-        hostnameStatus: data.result.status,
+        verificationState: data.verification_state,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

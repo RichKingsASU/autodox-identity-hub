@@ -134,7 +134,7 @@ export function DomainConfigPanel({ brandId, currentDomain, onDomainChange }: Do
 
   const txtRecordName = `_autodox-verify.${domain}`;
   const txtRecordValue = domainState.verificationToken || "";
-  const cnameTarget = "brands.yourdomain.com"; // This should come from config
+  const netlifyTarget = "your-site.netlify.app"; // This should come from config
 
   const isConfigured = currentDomain && domainState.status;
 
@@ -263,44 +263,22 @@ export function DomainConfigPanel({ brandId, currentDomain, onDomainChange }: Do
                     </div>
                   </GlassCard>
 
-                  {/* CNAME Record */}
+                  {/* Netlify DNS Instructions */}
                   <GlassCard className="p-4 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">CNAME Record (Routing)</span>
+                      <span className="text-sm font-medium text-muted-foreground">DNS Routing (After Verification)</span>
                       <span className="text-xs text-muted-foreground">Step 2</span>
                     </div>
-                    <div className="grid grid-cols-[100px_1fr_auto] gap-2 items-center">
-                      <span className="text-xs text-muted-foreground">Name:</span>
-                      <code className="text-sm bg-secondary px-2 py-1 rounded truncate">{domain.split(".")[0]}</code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleCopy(domain.split(".")[0], "cname-name")}
-                      >
-                        {copiedField === "cname-name" ? (
-                          <Check className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-[100px_1fr_auto] gap-2 items-center">
-                      <span className="text-xs text-muted-foreground">Target:</span>
-                      <code className="text-sm bg-secondary px-2 py-1 rounded truncate">{cnameTarget}</code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleCopy(cnameTarget, "cname-target")}
-                      >
-                        {copiedField === "cname-target" ? (
-                          <Check className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      After DNS verification, configure your domain to point to Netlify:
+                    </p>
+                    <ul className="text-xs space-y-1 list-disc list-inside text-muted-foreground">
+                      <li>For apex domains: Add an A record pointing to <code className="bg-secondary px-1 rounded">75.2.60.5</code></li>
+                      <li>For subdomains: Add a CNAME pointing to <code className="bg-secondary px-1 rounded">{netlifyTarget}</code></li>
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Netlify will automatically provision SSL once the domain is added.
+                    </p>
                   </GlassCard>
                 </div>
 
