@@ -9,16 +9,13 @@ interface ProvisionSSLRequest {
   brandId: string;
 }
 
-interface CloudflareHostnameResponse {
-  success: boolean;
-  result?: {
-    id: string;
-    hostname: string;
-    ssl: {
-      status: string;
-    };
+interface NetlifyDomainResponse {
+  id: string;
+  hostname: string;
+  ssl?: {
+    state: string;
   };
-  errors?: Array<{ message: string }>;
+  verification_state?: string;
 }
 
 Deno.serve(async (req) => {
@@ -37,9 +34,8 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const cloudflareApiToken = Deno.env.get("CLOUDFLARE_API_TOKEN");
-    const cloudflareZoneId = Deno.env.get("CLOUDFLARE_ZONE_ID");
-    const cloudflareFallbackOrigin = Deno.env.get("CLOUDFLARE_FALLBACK_ORIGIN");
+    const netlifyToken = Deno.env.get("NETLIFY_ACCESS_TOKEN");
+    const netlifySiteId = Deno.env.get("NETLIFY_SITE_ID");
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -64,16 +60,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if Cloudflare is configured
-    if (!cloudflareApiToken || !cloudflareZoneId) {
-      // For now, simulate SSL provisioning if Cloudflare is not configured
-      console.log("Cloudflare not configured, simulating SSL provisioning");
+    // Check if Netlify is configured
+    if (!netlifyToken || !netlifySiteId) {
+      // Simulate SSL provisioning if Netlify is not configured
+      console.log("Netlify not configured, simulating SSL provisioning");
       
       await supabase
         .from("brands")
         .update({
           domain_status: "provisioning_ssl",
-          ssl_status: "pending_validation",
+          ssl_status: "pending",
         })
         .eq("id", brandId);
 
@@ -96,7 +92,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          message: "SSL provisioning started (simulated - Cloudflare not configured)",
+          message: "SSL provisioning started (simulated - Netlify not configured)",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -128,37 +124,27 @@ Deno.serve(async (req) => {
       .from("brands")
       .update({ 
         domain_status: "provisioning_ssl",
-        ssl_status: "initializing",
+        ssl_status: "pending",
       })
       .eq("id", brandId);
 
-    // Create custom hostname in Cloudflare
-    const cloudflareUrl = `https://api.cloudflare.com/client/v4/zones/${cloudflareZoneId}/custom_hostnames`;
+    // Add custom domain to Netlify site
+    const netlifyUrl = `https://api.netlify.com/api/v1/sites/${netlifySiteId}/domains`;
     
-    const response = await fetch(cloudflareUrl, {
+    const response = await fetch(netlifyUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${cloudflareApiToken}`,
+        "Authorization": `Bearer ${netlifyToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         hostname: brand.domain,
-        ssl: {
-          method: "http",
-          type: "dv",
-          settings: {
-            http2: "on",
-            min_tls_version: "1.2",
-          },
-        },
-        custom_origin_server: cloudflareFallbackOrigin,
       }),
     });
 
-    const data: CloudflareHostnameResponse = await response.json();
-
-    if (!data.success || !data.result) {
-      const errorMessage = data.errors?.[0]?.message || "Failed to create custom hostname";
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = errorData.message || "Failed to add domain to Netlify";
       
       await supabase
         .from("brands")
@@ -175,21 +161,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Store Cloudflare hostname ID and update status
+    const data: NetlifyDomainResponse = await response.json();
+
+    // Store Netlify domain ID and update status
+    // Netlify auto-provisions SSL, so we track the state
+    const sslState = data.ssl?.state || "pending";
+    
     await supabase
       .from("brands")
       .update({
-        cloudflare_hostname_id: data.result.id,
-        ssl_status: data.result.ssl.status,
+        cloudflare_hostname_id: data.id, // Reusing this field for Netlify domain ID
+        ssl_status: sslState,
+        domain_status: sslState === "active" ? "active" : "provisioning_ssl",
       })
       .eq("id", brandId);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "SSL provisioning started",
-        hostnameId: data.result.id,
-        sslStatus: data.result.ssl.status,
+        message: "Domain added to Netlify, SSL provisioning started",
+        domainId: data.id,
+        sslStatus: sslState,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
