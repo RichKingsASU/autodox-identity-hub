@@ -60,9 +60,14 @@ export type Database = {
         Row: {
           active_template_id: string | null
           applied_template_version: number | null
+          cloudflare_hostname_id: string | null
           created_at: string
           current_month_usage: number | null
           domain: string | null
+          domain_error: string | null
+          domain_status: Database["public"]["Enums"]["domain_status"] | null
+          domain_verification_token: string | null
+          domain_verified_at: string | null
           id: string
           monthly_sms_limit: number | null
           name: string
@@ -71,6 +76,7 @@ export type Database = {
           previous_template_version: number | null
           settings: Json | null
           slug: string
+          ssl_status: string | null
           status: Database["public"]["Enums"]["brand_status"]
           template_applied_at: string | null
           template_applied_by: string | null
@@ -79,9 +85,14 @@ export type Database = {
         Insert: {
           active_template_id?: string | null
           applied_template_version?: number | null
+          cloudflare_hostname_id?: string | null
           created_at?: string
           current_month_usage?: number | null
           domain?: string | null
+          domain_error?: string | null
+          domain_status?: Database["public"]["Enums"]["domain_status"] | null
+          domain_verification_token?: string | null
+          domain_verified_at?: string | null
           id?: string
           monthly_sms_limit?: number | null
           name: string
@@ -90,6 +101,7 @@ export type Database = {
           previous_template_version?: number | null
           settings?: Json | null
           slug: string
+          ssl_status?: string | null
           status?: Database["public"]["Enums"]["brand_status"]
           template_applied_at?: string | null
           template_applied_by?: string | null
@@ -98,9 +110,14 @@ export type Database = {
         Update: {
           active_template_id?: string | null
           applied_template_version?: number | null
+          cloudflare_hostname_id?: string | null
           created_at?: string
           current_month_usage?: number | null
           domain?: string | null
+          domain_error?: string | null
+          domain_status?: Database["public"]["Enums"]["domain_status"] | null
+          domain_verification_token?: string | null
+          domain_verified_at?: string | null
           id?: string
           monthly_sms_limit?: number | null
           name?: string
@@ -109,6 +126,7 @@ export type Database = {
           previous_template_version?: number | null
           settings?: Json | null
           slug?: string
+          ssl_status?: string | null
           status?: Database["public"]["Enums"]["brand_status"]
           template_applied_at?: string | null
           template_applied_by?: string | null
@@ -407,6 +425,13 @@ export type Database = {
       app_role: "admin" | "super_admin" | "user"
       application_status: "pending" | "approved" | "rejected"
       brand_status: "provisioning" | "active" | "suspended" | "archived"
+      domain_status:
+        | "pending"
+        | "verifying"
+        | "verified"
+        | "provisioning_ssl"
+        | "active"
+        | "failed"
       landing_base_layout:
         | "hero_focused"
         | "compliance_heavy"
@@ -547,6 +572,14 @@ export const Constants = {
       app_role: ["admin", "super_admin", "user"],
       application_status: ["pending", "approved", "rejected"],
       brand_status: ["provisioning", "active", "suspended", "archived"],
+      domain_status: [
+        "pending",
+        "verifying",
+        "verified",
+        "provisioning_ssl",
+        "active",
+        "failed",
+      ],
       landing_base_layout: [
         "hero_focused",
         "compliance_heavy",
