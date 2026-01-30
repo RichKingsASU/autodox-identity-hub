@@ -1,27 +1,38 @@
 
-# Migration to External Supabase + Netlify Deployment
 
-## Your New Supabase Project
-- **URL**: `https://iqluzpzttzoaybbjvtsr.supabase.co`
-- **Project ID**: `iqluzpzttzoaybbjvtsr`
+# Implementation: Create Migration Files for External Supabase + Netlify Deployment
+
+## Overview
+Create all files needed to migrate the Autodox platform from Lovable Cloud to an external Supabase instance (`iqluzpzttzoaybbjvtsr`) with Netlify deployment.
 
 ---
 
 ## Files to Create
 
-### 1. `supabase/schema.sql` - Consolidated Database Schema
-A single SQL file combining all 15 migrations for import into your new Supabase project via SQL Editor.
+### 1. `supabase/schema.sql` - Consolidated Database Schema (~800 lines)
+
+This file combines all 15 migrations into a single SQL file for import into your new Supabase project.
 
 **Contents:**
+- Enable required extensions (pg_net for HTTP calls)
 - 6 Enums: `application_status`, `brand_status`, `app_role`, `template_status`, `landing_base_layout`, `domain_status`
-- 9 Tables: `profiles`, `applications`, `brands`, `landing_templates`, `portal_configs`, `user_roles`, `tickets`, `contact_submissions`, `template_activity_log`
-- 5 Functions: `update_updated_at_column()`, `handle_new_user()`, `has_role()`, `is_admin()`, `increment_template_version()`, `prevent_activity_log_modification()`, `notify_application_status_change()`
-- All RLS policies (30+ policies)
+- 9 Tables with full column definitions
+- 7 Database functions (with updated edge function URL pointing to new project)
+- 30+ RLS policies
 - All triggers and indexes
 - Storage bucket setup
 - 60 seed templates
 
+**Key change from original migrations:**
+```sql
+-- Updated URL in notify_application_status_change()
+'https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/notify-application-status'
+```
+
+---
+
 ### 2. `netlify.toml` - Deployment Configuration
+
 ```toml
 [build]
   command = "npm run build"
@@ -33,37 +44,31 @@ A single SQL file combining all 15 migrations for import into your new Supabase 
   status = 200
 ```
 
-### 3. Update `.env` (for reference/local dev)
-```env
-VITE_SUPABASE_URL="https://iqluzpzttzoaybbjvtsr.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY="YOUR_ANON_KEY"
-VITE_SUPABASE_PROJECT_ID="iqluzpzttzoaybbjvtsr"
-```
+---
 
-### 4. Update `supabase/config.toml`
-```toml
-project_id = "iqluzpzttzoaybbjvtsr"
-```
+### 3. Update `.lovable/plan.md` - Deployment Instructions
 
-### 5. Update Edge Function URLs
-The `notify_application_status_change()` function has a hardcoded URL that needs updating:
-```sql
--- Change from:
-'https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/notify-application-status'
--- To:
-'https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/notify-application-status'
-```
+Update the existing plan with finalized instructions and your new Supabase project details.
 
 ---
 
-## Deployment Steps (Post-Implementation)
+## Technical Details
 
-### Step 1: Import Schema
-1. Go to Supabase Dashboard → SQL Editor
-2. Paste the entire `schema.sql` contents
-3. Run the query
+### Schema Order (Dependencies Respected)
+1. Extensions (pg_net)
+2. Enums (must come before tables that use them)
+3. Core tables (profiles, applications)
+4. Admin tables (user_roles, brands, landing_templates, template_activity_log)
+5. Support tables (portal_configs, tickets, contact_submissions)
+6. Functions (handle_new_user, has_role, is_admin, etc.)
+7. Triggers (updated_at, version increment, activity log protection)
+8. RLS policies
+9. Indexes
+10. Storage bucket + policies
+11. Seed data (60 templates)
 
-### Step 2: Create Auth Trigger (Requires SQL Editor)
+### Post-Import Manual Steps
+After running `schema.sql`, you must run this separately in SQL Editor (cannot be in migration file):
 ```sql
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -71,7 +76,7 @@ CREATE TRIGGER on_auth_user_created
   EXECUTE FUNCTION public.handle_new_user();
 ```
 
-### Step 3: Deploy Edge Functions via CLI
+### Edge Function Deployment Commands
 ```bash
 supabase login
 supabase link --project-ref iqluzpzttzoaybbjvtsr
@@ -85,30 +90,23 @@ supabase functions deploy send-password-reset --no-verify-jwt
 supabase functions deploy send-signup-verification --no-verify-jwt
 ```
 
-### Step 4: Configure Secrets in New Supabase
-Dashboard → Edge Functions → Secrets:
+### Required Secrets in New Supabase
 - `RESEND_API_KEY`
 - `NETLIFY_ACCESS_TOKEN`
 - `NETLIFY_SITE_ID`
 
-### Step 5: Deploy to Netlify
-1. Push to GitHub
-2. Create Netlify site → Link repo
-3. Add environment variables in Netlify:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-   - `VITE_SUPABASE_PROJECT_ID`
-
-### Step 6: Configure Supabase Auth URLs
-Dashboard → Authentication → URL Configuration:
-- Site URL: Your Netlify domain
-- Redirect URLs: Add your Netlify domain
+### Netlify Environment Variables
+- `VITE_SUPABASE_URL` = `https://iqluzpzttzoaybbjvtsr.supabase.co`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` = Your anon key
+- `VITE_SUPABASE_PROJECT_ID` = `iqluzpzttzoaybbjvtsr`
 
 ---
 
-## Technical Notes
+## Summary
 
-- The `cloudflare_hostname_id` column is reused for Netlify domain IDs
-- Storage bucket `portal-logos` must be created manually in new project
-- The `handle_new_user()` trigger on `auth.users` requires SQL Editor (not migration file)
-- All 60 seed templates will be included in the schema
+| File | Lines | Purpose |
+|------|-------|---------|
+| `supabase/schema.sql` | ~800 | Full database schema for SQL Editor import |
+| `netlify.toml` | 10 | Build + SPA routing config |
+| `.lovable/plan.md` | Updated | Deployment documentation |
+
