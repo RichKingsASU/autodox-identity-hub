@@ -1,74 +1,36 @@
-
-
-# Implementation: Create Migration Files for External Supabase + Netlify Deployment
+# Autodox Platform - External Deployment Guide
 
 ## Overview
-Create all files needed to migrate the Autodox platform from Lovable Cloud to an external Supabase instance (`iqluzpzttzoaybbjvtsr`) with Netlify deployment.
+
+This guide covers deploying the Autodox platform to an external Supabase instance with Netlify hosting.
+
+**Target Supabase Project:** `iqluzpzttzoaybbjvtsr`
 
 ---
 
-## Files to Create
+## Files Created
 
-### 1. `supabase/schema.sql` - Consolidated Database Schema (~800 lines)
-
-This file combines all 15 migrations into a single SQL file for import into your new Supabase project.
-
-**Contents:**
-- Enable required extensions (pg_net for HTTP calls)
-- 6 Enums: `application_status`, `brand_status`, `app_role`, `template_status`, `landing_base_layout`, `domain_status`
-- 9 Tables with full column definitions
-- 7 Database functions (with updated edge function URL pointing to new project)
-- 30+ RLS policies
-- All triggers and indexes
-- Storage bucket setup
-- 60 seed templates
-
-**Key change from original migrations:**
-```sql
--- Updated URL in notify_application_status_change()
-'https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/notify-application-status'
-```
+| File | Purpose |
+|------|---------|
+| `supabase/schema.sql` | Consolidated database schema (~1000 lines) |
+| `netlify.toml` | Netlify build + SPA routing config |
 
 ---
 
-### 2. `netlify.toml` - Deployment Configuration
+## Deployment Steps
 
-```toml
-[build]
-  command = "npm run build"
-  publish = "dist"
+### Step 1: Import Database Schema
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-```
+1. Go to your Supabase dashboard: https://supabase.com/dashboard/project/iqluzpzttzoaybbjvtsr
+2. Navigate to **SQL Editor**
+3. Copy the entire contents of `supabase/schema.sql`
+4. Paste and click **Run**
+5. Wait for completion (this creates all tables, functions, policies, and seed data)
 
----
+### Step 2: Create Auth Trigger (REQUIRED)
 
-### 3. Update `.lovable/plan.md` - Deployment Instructions
+After the schema import, run this separately in SQL Editor:
 
-Update the existing plan with finalized instructions and your new Supabase project details.
-
----
-
-## Technical Details
-
-### Schema Order (Dependencies Respected)
-1. Extensions (pg_net)
-2. Enums (must come before tables that use them)
-3. Core tables (profiles, applications)
-4. Admin tables (user_roles, brands, landing_templates, template_activity_log)
-5. Support tables (portal_configs, tickets, contact_submissions)
-6. Functions (handle_new_user, has_role, is_admin, etc.)
-7. Triggers (updated_at, version increment, activity log protection)
-8. RLS policies
-9. Indexes
-10. Storage bucket + policies
-11. Seed data (60 templates)
-
-### Post-Import Manual Steps
-After running `schema.sql`, you must run this separately in SQL Editor (cannot be in migration file):
 ```sql
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -76,10 +38,28 @@ CREATE TRIGGER on_auth_user_created
   EXECUTE FUNCTION public.handle_new_user();
 ```
 
-### Edge Function Deployment Commands
+> **Why separate?** This trigger targets the `auth` schema which cannot be modified in standard migration files.
+
+### Step 3: Configure Supabase Secrets
+
+In your Supabase dashboard, go to **Settings → Edge Functions → Secrets** and add:
+
+| Secret | Purpose |
+|--------|---------|
+| `RESEND_API_KEY` | Email sending via Resend |
+| `NETLIFY_ACCESS_TOKEN` | Netlify API authentication |
+| `NETLIFY_SITE_ID` | Target Netlify site for custom domains |
+
+### Step 4: Deploy Edge Functions
+
+From your local machine with Supabase CLI installed:
+
 ```bash
+# Login and link to project
 supabase login
 supabase link --project-ref iqluzpzttzoaybbjvtsr
+
+# Deploy all edge functions
 supabase functions deploy verify-domain
 supabase functions deploy provision-ssl
 supabase functions deploy check-domain-status
@@ -90,23 +70,106 @@ supabase functions deploy send-password-reset --no-verify-jwt
 supabase functions deploy send-signup-verification --no-verify-jwt
 ```
 
-### Required Secrets in New Supabase
-- `RESEND_API_KEY`
-- `NETLIFY_ACCESS_TOKEN`
-- `NETLIFY_SITE_ID`
+### Step 5: Deploy to Netlify
 
-### Netlify Environment Variables
-- `VITE_SUPABASE_URL` = `https://iqluzpzttzoaybbjvtsr.supabase.co`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` = Your anon key
-- `VITE_SUPABASE_PROJECT_ID` = `iqluzpzttzoaybbjvtsr`
+1. Push code to your Git repository
+2. Connect repository to Netlify
+3. Configure environment variables in Netlify dashboard:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_SUPABASE_URL` | `https://iqluzpzttzoaybbjvtsr.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Your anon key from Supabase dashboard |
+| `VITE_SUPABASE_PROJECT_ID` | `iqluzpzttzoaybbjvtsr` |
+
+4. Deploy!
 
 ---
 
-## Summary
+## Schema Contents
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `supabase/schema.sql` | ~800 | Full database schema for SQL Editor import |
-| `netlify.toml` | 10 | Build + SPA routing config |
-| `.lovable/plan.md` | Updated | Deployment documentation |
+The consolidated schema includes:
 
+### Extensions
+- `pg_net` for HTTP calls from database triggers
+
+### Enums (6)
+- `application_status`: pending, approved, rejected
+- `app_role`: admin, super_admin, user
+- `brand_status`: provisioning, active, suspended, archived
+- `template_status`: draft, published, disabled
+- `landing_base_layout`: 8 layout types
+- `domain_status`: pending, verifying, verified, provisioning_ssl, active, failed
+
+### Tables (9)
+- `profiles` - User profile data
+- `applications` - SMS service applications
+- `user_roles` - RBAC roles
+- `brands` - Multi-tenant brand management
+- `landing_templates` - Template library
+- `template_activity_log` - Immutable audit trail
+- `portal_configs` - White-label theming
+- `tickets` - Support tickets
+- `contact_submissions` - Contact form submissions
+
+### Functions (7)
+- `handle_new_user()` - Auto-create profile on signup
+- `update_updated_at_column()` - Timestamp management
+- `has_role()` - Role checking
+- `is_admin()` - Admin verification
+- `increment_template_version()` - Auto-version templates
+- `prevent_activity_log_modification()` - Audit log protection
+- `notify_application_status_change()` - Webhook trigger
+
+### RLS Policies (30+)
+Comprehensive row-level security for all tables
+
+### Seed Data
+60 pre-built landing page templates across 8 categories
+
+---
+
+## Edge Functions
+
+| Function | JWT | Purpose |
+|----------|-----|---------|
+| `verify-domain` | Required | DNS TXT record verification |
+| `provision-ssl` | Required | Register domain with Netlify |
+| `check-domain-status` | Required | Poll SSL certificate status |
+| `serve-brand-landing` | Required | Resolve brand from Host header |
+| `notify-application-status` | **None** | Application status webhooks |
+| `send-contact-notification` | Required | Contact form emails |
+| `send-password-reset` | **None** | Password reset emails |
+| `send-signup-verification` | **None** | Signup verification emails |
+
+---
+
+## Custom Domain Flow
+
+```
+1. Admin enters domain → domain_status = 'pending'
+2. DNS instructions shown (TXT record + A/CNAME)
+3. verify-domain checks DNS → domain_status = 'verified'
+4. provision-ssl registers with Netlify → domain_status = 'provisioning_ssl'
+5. check-domain-status polls → domain_status = 'active'
+6. serve-brand-landing resolves requests by Host header
+```
+
+---
+
+## Troubleshooting
+
+### "Function not found" errors
+Ensure all edge functions are deployed with correct `--no-verify-jwt` flags
+
+### Auth trigger not working
+Manually run the auth trigger SQL in Step 2
+
+### Custom domains not working
+1. Check DNS propagation (can take 24-48 hours)
+2. Verify NETLIFY_ACCESS_TOKEN and NETLIFY_SITE_ID secrets are set
+3. Check edge function logs in Supabase dashboard
+
+---
+
+*Last updated: January 2026*
