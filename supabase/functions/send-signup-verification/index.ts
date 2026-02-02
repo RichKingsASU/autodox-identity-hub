@@ -13,6 +13,16 @@ interface VerificationEmailRequest {
   userName?: string;
 }
 
+// HTML escape helper to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,6 +32,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { email, userName }: VerificationEmailRequest = await req.json();
 
     const displayName = userName || email.split("@")[0];
+    const safeDisplayName = escapeHtml(displayName);
     const appUrl = Deno.env.get("SUPABASE_URL")?.replace(".supabase.co", "") || "";
 
     const emailResponse = await resend.emails.send({
@@ -53,7 +64,7 @@ const handler = async (req: Request): Promise<Response> => {
                   <tr>
                     <td style="padding: 20px 40px;">
                       <p style="margin: 0 0 20px; color: #e0e0e0; font-size: 16px; line-height: 1.6;">
-                        Hi ${displayName},
+                        Hi ${safeDisplayName},
                       </p>
                       <p style="margin: 0 0 30px; color: #b0b0b0; font-size: 15px; line-height: 1.6;">
                         Welcome to Autodox! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.

@@ -23,6 +23,16 @@ interface WebhookPayload {
   };
 }
 
+// HTML escape helper to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -30,6 +40,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Validate internal webhook secret
+    const authHeader = req.headers.get("Authorization");
+    const webhookSecret = Deno.env.get("INTERNAL_WEBHOOK_SECRET");
+    
+    if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
+      console.error("Unauthorized webhook request - invalid secret");
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const payload: WebhookPayload = await req.json();
     
     console.log("Received payload:", JSON.stringify(payload));
@@ -69,6 +91,10 @@ Deno.serve(async (req) => {
 
     console.log("Sending email to:", profile.email);
 
+    // Sanitize user inputs for HTML
+    const safeFirstName = escapeHtml(profile.first_name || "");
+    const safeCompanyName = escapeHtml(payload.record.company_name || "");
+
     // Build email HTML based on status
     const approvedEmailHtml = `
       <!DOCTYPE html>
@@ -82,8 +108,8 @@ Deno.serve(async (req) => {
             <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Congratulations!</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="font-size: 18px; margin-bottom: 20px;">Hi ${profile.first_name},</p>
-            <p style="margin-bottom: 20px;">Great news! Your application for <strong>${payload.record.company_name}</strong> has been <span style="color: #10b981; font-weight: bold;">approved</span>.</p>
+            <p style="font-size: 18px; margin-bottom: 20px;">Hi ${safeFirstName},</p>
+            <p style="margin-bottom: 20px;">Great news! Your application for <strong>${safeCompanyName}</strong> has been <span style="color: #10b981; font-weight: bold;">approved</span>.</p>
             <p style="margin-bottom: 30px;">You now have full access to all features on your dashboard. Start sending messages and managing your communications right away!</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="https://autodox.io" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Go to Dashboard</a>
@@ -107,8 +133,8 @@ Deno.serve(async (req) => {
             <h1 style="color: white; margin: 0; font-size: 28px;">Application Update</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="font-size: 18px; margin-bottom: 20px;">Hi ${profile.first_name},</p>
-            <p style="margin-bottom: 20px;">Thank you for your interest in Autodox. After reviewing your application for <strong>${payload.record.company_name}</strong>, we were unable to approve it at this time.</p>
+            <p style="font-size: 18px; margin-bottom: 20px;">Hi ${safeFirstName},</p>
+            <p style="margin-bottom: 20px;">Thank you for your interest in Autodox. After reviewing your application for <strong>${safeCompanyName}</strong>, we were unable to approve it at this time.</p>
             <p style="margin-bottom: 20px;">This could be due to incomplete information or other requirements. If you believe this was an error or would like more information, please don't hesitate to reach out to our support team.</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="mailto:hello@autodox.io" style="background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Contact Support</a>

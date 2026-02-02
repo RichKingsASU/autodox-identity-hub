@@ -14,6 +14,16 @@ interface PasswordResetRequest {
   userName?: string;
 }
 
+// HTML escape helper to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -23,6 +33,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { email, resetLink, userName }: PasswordResetRequest = await req.json();
 
     const displayName = userName || email.split("@")[0];
+    const safeDisplayName = escapeHtml(displayName);
 
     const emailResponse = await resend.emails.send({
       from: "Autodox <onboarding@resend.dev>",
@@ -53,7 +64,7 @@ const handler = async (req: Request): Promise<Response> => {
                   <tr>
                     <td style="padding: 20px 40px;">
                       <p style="margin: 0 0 20px; color: #e0e0e0; font-size: 16px; line-height: 1.6;">
-                        Hi ${displayName},
+                        Hi ${safeDisplayName},
                       </p>
                       <p style="margin: 0 0 30px; color: #b0b0b0; font-size: 15px; line-height: 1.6;">
                         We received a request to reset your password. Click the button below to create a new password:
