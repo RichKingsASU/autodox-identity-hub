@@ -15,6 +15,16 @@ interface ContactNotificationRequest {
   message: string;
 }
 
+// HTML escape helper to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -24,18 +34,24 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const { name, email, company, message }: ContactNotificationRequest = await req.json();
 
+    // Sanitize all user inputs
+    const safeName = escapeHtml(name || "");
+    const safeEmail = escapeHtml(email || "");
+    const safeCompany = company ? escapeHtml(company) : "";
+    const safeMessage = escapeHtml(message || "").replace(/\n/g, "<br>");
+
     // Send notification to admin
     const adminNotification = await resend.emails.send({
       from: "Autodox Contact <onboarding@resend.dev>",
       to: ["hello@autodox.io"], // Replace with your admin email
-      subject: `New Contact Form Submission from ${name}`,
+      subject: `New Contact Form Submission from ${safeName}`,
       html: `
         <h2>New Contact Form Submission</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        ${company ? `<p><strong>Company:</strong> ${company}</p>` : ""}
+        <p><strong>Name:</strong> ${safeName}</p>
+        <p><strong>Email:</strong> ${safeEmail}</p>
+        ${safeCompany ? `<p><strong>Company:</strong> ${safeCompany}</p>` : ""}
         <p><strong>Message:</strong></p>
-        <p>${message.replace(/\n/g, "<br>")}</p>
+        <p>${safeMessage}</p>
         <hr>
         <p style="color: #666; font-size: 12px;">Sent from Autodox Contact Form</p>
       `,
@@ -49,11 +65,11 @@ const handler = async (req: Request): Promise<Response> => {
       to: [email],
       subject: "We received your message!",
       html: `
-        <h1>Thank you for contacting us, ${name}!</h1>
+        <h1>Thank you for contacting us, ${safeName}!</h1>
         <p>We have received your message and will get back to you within 24 hours.</p>
         <p>Here's a copy of your message:</p>
         <blockquote style="border-left: 3px solid #ccc; padding-left: 16px; color: #555;">
-          ${message.replace(/\n/g, "<br>")}
+          ${safeMessage}
         </blockquote>
         <p>Best regards,<br>The Autodox Team</p>
       `,
