@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Globe, CheckCircle2, AlertCircle, Loader2, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, Globe, CheckCircle2, AlertCircle, Loader2, Trash2, RefreshCw, Info } from 'lucide-react';
 import { useDomains, type Domain, type DomainStatus } from '@/hooks/useDomains';
 import DomainWizard from './DomainWizard';
+import DNSDetailsDialog from './DNSDetailsDialog';
 import { toast } from 'sonner';
 
 interface DomainManagementCardProps {
@@ -15,6 +16,7 @@ interface DomainManagementCardProps {
 
 const DomainManagementCard: React.FC<DomainManagementCardProps> = ({ brandId, brandName }) => {
     const [wizardOpen, setWizardOpen] = useState(false);
+    const [dnsDialogDomain, setDnsDialogDomain] = useState<Domain | null>(null);
     const { domains, loading, verifyDNS, checkSSL, removeDomain, fetchDomains } = useDomains(brandId);
 
     const getStatusIcon = (status: DomainStatus) => {
@@ -114,6 +116,16 @@ const DomainManagementCard: React.FC<DomainManagementCardProps> = ({ brandId, br
                                     </div>
 
                                     <div className="flex items-center gap-2">
+                                        {(domain.status === 'pending' || domain.status === 'verifying' || domain.status === 'failed') && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setDnsDialogDomain(domain)}
+                                                title="View DNS Records"
+                                            >
+                                                <Info className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                         {domain.status === 'verifying' && (
                                             <Button
                                                 variant="outline"
@@ -181,6 +193,12 @@ const DomainManagementCard: React.FC<DomainManagementCardProps> = ({ brandId, br
                 onOpenChange={setWizardOpen}
                 brandId={brandId}
                 brandName={brandName}
+            />
+
+            <DNSDetailsDialog
+                open={!!dnsDialogDomain}
+                onOpenChange={(open) => !open && setDnsDialogDomain(null)}
+                domain={dnsDialogDomain}
             />
         </>
     );
