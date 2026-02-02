@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DomainConfigPanel } from "./DomainConfigPanel";
+import DomainManagementCard from "./DomainManagementCard";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
 
   const handleSave = async () => {
     if (!brand) return;
-    
+
     setIsSaving(true);
     const success = await onSave(brand.id, {
       name,
@@ -47,7 +47,7 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
       monthly_sms_limit: parseInt(monthlyLimit) || 10000,
     });
     setIsSaving(false);
-    
+
     if (success) {
       onClose();
     }
@@ -130,10 +130,9 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
           </TabsContent>
 
           <TabsContent value="domain" className="mt-4">
-            <DomainConfigPanel
+            <DomainManagementCard
               brandId={brand.id}
-              currentDomain={brand.domain}
-              onDomainChange={handleDomainChange}
+              brandName={brand.name}
             />
           </TabsContent>
         </Tabs>
