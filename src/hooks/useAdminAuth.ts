@@ -11,8 +11,8 @@ interface UserRole {
   created_at: string;
 }
 
-// DEV BYPASS: Set to true to skip authentication in development
-const DEV_BYPASS = import.meta.env.DEV && true;
+// DEV BYPASS: Set to false for production, true only for local development testing
+const DEV_BYPASS = false;
 
 export function useAdminAuth() {
   const [user, setUser] = useState<User | null>(null);
