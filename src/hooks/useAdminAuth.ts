@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -21,6 +21,28 @@ export function useAdminAuth() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
+  // Reusable function to fetch user roles
+  const fetchUserRoles = useCallback(async (userId: string): Promise<AppRole[]> => {
+    const { data: userRoles, error } = await supabase
+      .from("user_roles")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error fetching user roles:", error);
+      return [];
+    }
+
+    return (userRoles as UserRole[])?.map((r) => r.role) ?? [];
+  }, []);
+
+  // Apply roles to state
+  const applyRoles = useCallback((roleList: AppRole[]) => {
+    setRoles(roleList);
+    setIsAdmin(roleList.includes("admin") || roleList.includes("super_admin"));
+    setIsSuperAdmin(roleList.includes("super_admin"));
+  }, []);
+
   useEffect(() => {
     // DEV BYPASS: Skip auth in development
     if (DEV_BYPASS) {
@@ -32,44 +54,55 @@ export function useAdminAuth() {
       return;
     }
 
+    let isMounted = true;
+
+    // Handle auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return;
+
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
-          // Fetch user roles
-          setTimeout(async () => {
-            const { data: userRoles } = await supabase
-              .from("user_roles")
-              .select("*")
-              .eq("user_id", session.user.id);
-            
-            if (userRoles) {
-              const roleList = userRoles.map((r: UserRole) => r.role);
-              setRoles(roleList);
-              setIsAdmin(roleList.includes("admin") || roleList.includes("super_admin"));
-              setIsSuperAdmin(roleList.includes("super_admin"));
-            }
+          const roleList = await fetchUserRoles(session.user.id);
+          if (isMounted) {
+            applyRoles(roleList);
             setLoading(false);
-          }, 0);
+          }
         } else {
-          setRoles([]);
-          setIsAdmin(false);
-          setIsSuperAdmin(false);
+          applyRoles([]);
           setLoading(false);
         }
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Initial session check - fetch roles before setting loading to false
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!isMounted) return;
+
       setUser(session?.user ?? null);
-      if (!session?.user) {
+
+      if (session?.user) {
+        const roleList = await fetchUserRoles(session.user.id);
+        if (isMounted) {
+          applyRoles(roleList);
+        }
+      }
+      
+      if (isMounted) {
         setLoading(false);
       }
-    });
+    };
 
-    return () => subscription.unsubscribe();
-  }, []);
+    initializeAuth();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchUserRoles, applyRoles]);
 
   return {
     user,
