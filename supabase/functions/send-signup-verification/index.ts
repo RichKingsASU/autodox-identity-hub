@@ -3,10 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
-if (!RESEND_API_KEY) {
-  throw new Error("RESEND_API_KEY is not configured");
-}
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -34,49 +30,38 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize Supabase client early for error logging
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   try {
+    if (!RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY is not configured");
+    }
+
     const { email, userName, brand_id }: VerificationEmailRequest = await req.json();
 
     const displayName = userName || email.split("@")[0];
     const safeDisplayName = escapeHtml(displayName);
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    // Get brand email settings for dynamic sender
+    let fromName = "Autodox";
+    let fromEmail = "noreply@email.agents-institute.com";
 
-    // Resolve brand and verified domain
-    let brandName = "Autodox";
-    let domain = "email.agents-institute.com";
+    const { data: settings } = await supabase
+      .from("brand_email_settings")
+      .select("from_name, from_email")
+      .limit(1)
+      .single();
 
-    const query = supabase
-      .from("brands")
-      .select(`
-        name,
-        domains (
-          domain,
-          status
-        )
-      `)
-      .eq("domains.is_primary", true)
-      .eq("domains.status", "verified");
-
-    if (brand_id) {
-      query.eq("id", brand_id);
-    } else {
-      // Find the first verified brand
-      query.limit(1);
+    if (settings) {
+      fromName = settings.from_name;
+      fromEmail = settings.from_email;
     }
 
-    const { data: brandData, error: brandError } = await query.single();
-
-    if (!brandError && brandData) {
-      brandName = brandData.name;
-      domain = brandData.domains?.[0]?.domain || domain;
-    }
-
-    const fromAddress = `${brandName} <noreply@${domain}>`;
+    const fromAddress = `${fromName} <${fromEmail}>`;
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -87,7 +72,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: fromAddress,
         to: [email],
-        subject: `Verify Your Email - ${brandName}`,
+        subject: `Verify Your Email - ${fromName}`,
         html: `
         <!DOCTYPE html>
         <html>
@@ -116,7 +101,7 @@ serve(async (req) => {
                         Hi ${safeDisplayName},
                       </p>
                       <p style="margin: 0 0 30px; color: #b0b0b0; font-size: 15px; line-height: 1.6;">
-                        Welcome to ${brandName}! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.
+                        Welcome to ${fromName}! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.
                       </p>
                       
                       <!-- Info Box -->
@@ -138,7 +123,7 @@ serve(async (req) => {
                       <!-- Security Notice -->
                       <div style="background-color: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 20px;">
                         <p style="margin: 0; color: #888888; font-size: 13px; line-height: 1.5;">
-                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This email was sent because someone registered with this address on ${brandName}. If this wasn't you, you can safely ignore this email.
+                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This email was sent because someone registered with this address on ${fromName}. If this wasn't you, you can safely ignore this email.
                         </p>
                       </div>
                     </td>
@@ -148,7 +133,7 @@ serve(async (req) => {
                   <tr>
                     <td style="padding: 30px 40px; border-top: 1px solid rgba(255,255,255,0.1);">
                       <p style="margin: 0; color: #666666; font-size: 12px; text-align: center;">
-                        © ${new Date().getFullYear()} ${brandName}. All rights reserved.
+                        © ${new Date().getFullYear()} ${fromName}. All rights reserved.
                       </p>
                     </td>
                   </tr>
@@ -165,12 +150,14 @@ serve(async (req) => {
     const data = await res.json();
     const status = res.ok ? "sent" : "failed";
 
-    // Log to email_logs
+    // Log to email_logs with required from_email field
     await supabase.from("email_logs").insert({
       to_email: email,
-      subject: `Verify Your Email - ${brandName}`,
+      from_email: fromAddress,
+      subject: `Verify Your Email - ${fromName}`,
       resend_id: data.id || null,
       status: status,
+      error_message: res.ok ? null : JSON.stringify(data),
     });
 
     if (!res.ok) {
@@ -190,8 +177,17 @@ serve(async (req) => {
     );
   } catch (error: any) {
     console.error("Error in send-signup-verification function:", error);
+    
+    // Log error to debug_logs for admin visibility
+    await supabase.from("debug_logs").insert({
+      function_name: "send-signup-verification",
+      error_type: "error",
+      error_message: error.message,
+      error_stack: error.stack || null,
+    });
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An unexpected error occurred" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },

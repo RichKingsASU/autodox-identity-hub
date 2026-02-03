@@ -26,6 +26,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize Supabase admin client early for error logging
+  const supabase = createClient(
+    SUPABASE_URL ?? "",
+    SUPABASE_SERVICE_ROLE_KEY ?? "",
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
   try {
     if (!RESEND_API_KEY) {
       throw new Error("RESEND_API_KEY is not configured");
@@ -39,13 +46,6 @@ serve(async (req) => {
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
-
-    // Initialize Supabase admin client
-    const supabase = createClient(
-      SUPABASE_URL ?? "",
-      SUPABASE_SERVICE_ROLE_KEY ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
 
     // Generate recovery link using Admin API
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
@@ -69,26 +69,16 @@ serve(async (req) => {
     const userName = email.split("@")[0];
     const safeUserName = escapeHtml(userName);
 
-    // Resolve brand info for email branding
-    let brandName = "Autodox";
-    let domain = "email.agents-institute.com";
-
-    const { data: brandData } = await supabase
-      .from("brands")
-      .select(`name, domains (domain, status)`)
-      .eq("domains.is_primary", true)
-      .eq("domains.status", "verified")
+    // Get brand email settings for dynamic sender
+    const { data: settings } = await supabase
+      .from("brand_email_settings")
+      .select("from_name, from_email")
       .limit(1)
       .single();
 
-    if (brandData) {
-      brandName = brandData.name;
-      if (brandData.domains?.[0]?.domain) {
-        domain = brandData.domains[0].domain;
-      }
-    }
-
-    const fromAddress = `${brandName} <noreply@${domain}>`;
+    const fromName = settings?.from_name || "Autodox";
+    const fromEmail = settings?.from_email || "noreply@email.agents-institute.com";
+    const fromAddress = `${fromName} <${fromEmail}>`;
 
     // Send email via Resend
     const res = await fetch("https://api.resend.com/emails", {
@@ -100,7 +90,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: fromAddress,
         to: [email],
-        subject: `Reset Your Password - ${brandName}`,
+        subject: `Reset Your Password - ${fromName}`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -150,7 +140,7 @@ serve(async (req) => {
                         <!-- Security Notice -->
                         <div style="background-color: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 20px;">
                           <p style="margin: 0; color: #888888; font-size: 13px; line-height: 1.5;">
-                            🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> Never share your password or this link with anyone. ${brandName} will never ask for your password via email.
+                            🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> Never share your password or this link with anyone. ${fromName} will never ask for your password via email.
                           </p>
                         </div>
                       </td>
@@ -160,7 +150,7 @@ serve(async (req) => {
                     <tr>
                       <td style="padding: 30px 40px; border-top: 1px solid rgba(255,255,255,0.1);">
                         <p style="margin: 0; color: #666666; font-size: 12px; text-align: center;">
-                          © ${new Date().getFullYear()} ${brandName}. All rights reserved.
+                          © ${new Date().getFullYear()} ${fromName}. All rights reserved.
                         </p>
                         <p style="margin: 10px 0 0; color: #555555; font-size: 11px; text-align: center;">
                           If the button doesn't work, copy and paste this link into your browser:<br>
@@ -181,12 +171,14 @@ serve(async (req) => {
     const resendData = await res.json();
     const status = res.ok ? "sent" : "failed";
 
-    // Log to email_logs
+    // Log to email_logs with required from_email field
     await supabase.from("email_logs").insert({
       to_email: email,
-      subject: `Reset Your Password - ${brandName}`,
+      from_email: fromAddress,
+      subject: `Reset Your Password - ${fromName}`,
       resend_id: resendData.id || null,
       status: status,
+      error_message: res.ok ? null : JSON.stringify(resendData),
     });
 
     if (!res.ok) {
@@ -203,8 +195,17 @@ serve(async (req) => {
     );
   } catch (error: any) {
     console.error("Error in request-password-reset:", error);
+    
+    // Log error to debug_logs for admin visibility
+    await supabase.from("debug_logs").insert({
+      function_name: "request-password-reset",
+      error_type: "error",
+      error_message: error.message,
+      error_stack: error.stack || null,
+    });
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An unexpected error occurred" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
