@@ -10,7 +10,8 @@ import {
   ChevronRight,
   Palette,
   ClipboardList,
-  LayoutTemplate
+  LayoutTemplate,
+  Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Overview", path: "/admin" },
   { icon: ClipboardList, label: "Applications", path: "/admin/applications", hasBadge: true },
   { icon: Building2, label: "Brands", path: "/admin/brands" },
+  { icon: Globe, label: "Domains", path: "/admin/domains" },
   { icon: LayoutTemplate, label: "Templates", path: "/admin/templates" },
   { icon: Users, label: "Users", path: "/admin/users" },
   { icon: Palette, label: "Portal Configs", path: "/admin/portals" },

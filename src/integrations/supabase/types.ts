@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           ein: string
           id: string
+          last_notified_at: string | null
           monthly_volume: string
           privacy_url: string
           status: Database["public"]["Enums"]["application_status"]
@@ -33,6 +34,7 @@ export type Database = {
           created_at?: string
           ein: string
           id?: string
+          last_notified_at?: string | null
           monthly_volume: string
           privacy_url: string
           status?: Database["public"]["Enums"]["application_status"]
@@ -46,6 +48,7 @@ export type Database = {
           created_at?: string
           ein?: string
           id?: string
+          last_notified_at?: string | null
           monthly_volume?: string
           privacy_url?: string
           status?: Database["public"]["Enums"]["application_status"]
@@ -55,6 +58,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      brand_email_settings: {
+        Row: {
+          brand_id: string
+          created_at: string
+          custom_api_key: string | null
+          from_email: string
+          from_name: string
+          id: string
+          reply_to_email: string | null
+          sending_domain: string | null
+          sending_domain_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          custom_api_key?: string | null
+          from_email?: string
+          from_name?: string
+          id?: string
+          reply_to_email?: string | null
+          sending_domain?: string | null
+          sending_domain_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          custom_api_key?: string | null
+          from_email?: string
+          from_name?: string
+          id?: string
+          reply_to_email?: string | null
+          sending_domain?: string | null
+          sending_domain_status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_email_settings_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: true
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       brands: {
         Row: {
@@ -69,6 +119,7 @@ export type Database = {
           domain_verification_token: string | null
           domain_verified_at: string | null
           id: string
+          last_notified_at: string | null
           monthly_sms_limit: number | null
           name: string
           owner_user_id: string | null
@@ -94,6 +145,7 @@ export type Database = {
           domain_verification_token?: string | null
           domain_verified_at?: string | null
           id?: string
+          last_notified_at?: string | null
           monthly_sms_limit?: number | null
           name: string
           owner_user_id?: string | null
@@ -119,6 +171,7 @@ export type Database = {
           domain_verification_token?: string | null
           domain_verified_at?: string | null
           id?: string
+          last_notified_at?: string | null
           monthly_sms_limit?: number | null
           name?: string
           owner_user_id?: string | null
@@ -155,6 +208,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          last_notified_at: string | null
           message: string
           name: string
           responded_at: string | null
@@ -165,6 +219,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          last_notified_at?: string | null
           message: string
           name: string
           responded_at?: string | null
@@ -175,12 +230,107 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          last_notified_at?: string | null
           message?: string
           name?: string
           responded_at?: string | null
           status?: string
         }
         Relationships: []
+      }
+      debug_logs: {
+        Row: {
+          brand_id: string | null
+          created_at: string
+          error_message: string
+          error_stack: string | null
+          error_type: string
+          function_name: string
+          id: string
+          request_payload: Json | null
+          response_status: number | null
+          user_id: string | null
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string
+          error_message: string
+          error_stack?: string | null
+          error_type?: string
+          function_name: string
+          id?: string
+          request_payload?: Json | null
+          response_status?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string
+          error_message?: string
+          error_stack?: string | null
+          error_type?: string
+          function_name?: string
+          id?: string
+          request_payload?: Json | null
+          response_status?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debug_logs_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_logs: {
+        Row: {
+          brand_id: string | null
+          created_at: string
+          error_message: string | null
+          from_email: string
+          id: string
+          resend_id: string | null
+          status: string
+          subject: string
+          template_key: string | null
+          to_email: string
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_email: string
+          id?: string
+          resend_id?: string | null
+          status?: string
+          subject: string
+          template_key?: string | null
+          to_email: string
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_email?: string
+          id?: string
+          resend_id?: string | null
+          status?: string
+          subject?: string
+          template_key?: string | null
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       landing_templates: {
         Row: {

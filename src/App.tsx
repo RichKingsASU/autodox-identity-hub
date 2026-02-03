@@ -16,6 +16,7 @@ import AdminPortals from "./pages/admin/AdminPortals";
 import AdminTemplates from "./pages/admin/AdminTemplates";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminAccess from "./pages/admin/AdminAccess";
+import AdminDomains from "./pages/admin/AdminDomains";
 import MyPortal from "./pages/MyPortal";
 
 // Dashboard pages
@@ -66,6 +67,7 @@ const App = () => (
             <Route index element={<AdminDashboard />} />
             <Route path="applications" element={<AdminApplications />} />
             <Route path="brands" element={<AdminBrands />} />
+            <Route path="domains" element={<AdminDomains />} />
             <Route path="templates" element={<AdminTemplates />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="portals" element={<AdminPortals />} />
