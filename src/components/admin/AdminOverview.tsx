@@ -3,6 +3,7 @@ import { Building2, MessageSquare, TrendingUp, Activity, Globe, Zap } from "luci
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Brand } from "@/hooks/useBrands";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { IntegrationStatusPanel } from "./IntegrationStatusPanel";
 
 interface AdminOverviewProps {
   brands: Brand[];
@@ -114,6 +115,9 @@ export function AdminOverview({ brands, loading }: AdminOverviewProps) {
           </div>
         </div>
       </motion.div>
+
+      {/* Integration Status Panel */}
+      <IntegrationStatusPanel showRefresh autoRefresh />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
