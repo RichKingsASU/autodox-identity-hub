@@ -1,183 +1,100 @@
 
-# Fix Password Reset Flow
 
-## Problem Summary
+# Fix Super Admin Role Detection
 
-The password reset flow fails after the user clicks the email link and submits a new password. While auth logs show the password update succeeds (PUT `/user` returns 200), subsequent login attempts fail. The root causes are:
+## Problem
 
-1. Missing error handling around async operations
-2. Race condition between hash fragment processing and session detection
-3. No recovery token extraction from URL
-4. Silent failures when exceptions occur
+The `useAdminAuth` hook has a race condition that causes role detection to fail:
 
-## Architecture Issues
+1. `getSession()` is called and sets `loading = false` when there's no session, OR sets `user` but doesn't fetch roles
+2. Role fetching only happens in `onAuthStateChange` callback
+3. The component may render before roles are loaded
+
+## Current Flow (Broken)
 
 ```text
-Current Flow (Broken):
-┌─────────────┐     ┌─────────────────┐     ┌────────────────┐
-│ Click Email │────▶│ /reset-password │────▶│ Check Session  │──▶ May show "Invalid"
-│    Link     │     │   #token=xxx    │     │  (race cond.)  │    before token processed
-└─────────────┘     └─────────────────┘     └────────────────┘
-
-Fixed Flow:
-┌─────────────┐     ┌─────────────────┐     ┌────────────────┐     ┌───────────────┐
-│ Click Email │────▶│ /reset-password │────▶│ Wait for Hash  │────▶│ Verify Session│
-│    Link     │     │   #token=xxx    │     │  Processing    │     │   + Update PW │
-└─────────────┘     └─────────────────┘     └────────────────┘     └───────────────┘
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ getSession()│────▶│ Set user    │────▶│ loading=    │──▶ Component renders
+│             │     │             │     │ false       │    with empty roles
+└─────────────┘     └─────────────┘     └─────────────┘
+                                              │
+                                              ▼
+                    ┌─────────────────────────────────┐
+                    │ onAuthStateChange fires LATER   │
+                    │ and fetches roles (too late!)   │
+                    └─────────────────────────────────┘
 ```
 
-## Implementation Plan
+## Fixed Flow
 
-### Step 1: Fix ResetPassword.tsx Session Handling
+```text
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ getSession()│────▶│ Set user    │────▶│ Fetch roles │────▶│ loading=    │
+│             │     │             │     │             │     │ false       │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
 
-**Issue**: Race condition between Supabase processing the URL hash and the component checking for session
+## Implementation
 
-**Solution**: 
-- Add explicit detection of URL hash containing recovery tokens
-- Wait for Supabase to process the hash before checking session
-- Add proper timeout for hash processing
-- Improve PASSWORD_RECOVERY event handling
+### File: `src/hooks/useAdminAuth.ts`
 
-### Step 2: Add Try-Catch Error Handling
+**Changes:**
 
-**Issue**: Async errors in `handleSubmit` aren't caught, leading to silent failures
+1. **Create a reusable `fetchRoles` function** that can be called from both `getSession()` and `onAuthStateChange`
 
-**Solution**:
-- Wrap `updatePassword` call in try-catch block
-- Display appropriate error messages for all failure modes
-- Add logging for debugging
+2. **Remove unnecessary `setTimeout`** wrapper that causes timing issues
 
-### Step 3: Add Global Unhandled Rejection Handler
+3. **Fetch roles immediately in `getSession().then()`** when a session exists, then set `loading = false` only after roles are fetched
 
-**Issue**: Unhandled promise rejections can crash the app
+4. **Add error handling** for role fetching failures
 
-**Solution**:
-- Add `unhandledrejection` event listener in App.tsx
-- Show toast for uncaught errors
-- Prevent default crash behavior
-
-### Step 4: Improve useAuth updatePassword Function
-
-**Issue**: No validation or session verification before password update
-
-**Solution**:
-- Verify session exists before attempting update
-- Return more detailed error information
-- Handle edge cases (expired session, etc.)
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/pages/ResetPassword.tsx` | Fix session detection, add try-catch, handle URL hash |
-| `src/hooks/useAuth.ts` | Add session validation to updatePassword |
-| `src/App.tsx` | Add global unhandled rejection handler |
-
-## Technical Details
-
-### ResetPassword.tsx Changes
+### Updated Code Logic
 
 ```typescript
-// 1. Add hash detection on mount
-useEffect(() => {
-  const hash = window.location.hash;
-  const hasRecoveryToken = hash.includes('type=recovery') || 
-                           hash.includes('access_token');
+// Helper function to fetch roles
+const fetchUserRoles = async (userId: string) => {
+  const { data: userRoles, error } = await supabase
+    .from("user_roles")
+    .select("*")
+    .eq("user_id", userId);
   
-  if (hasRecoveryToken) {
-    // Supabase client will process this automatically
-    // Just wait for the auth state change
-    setIsValidSession(true);
+  if (error) {
+    console.error("Error fetching user roles:", error);
+    return [];
   }
-}, []);
-
-// 2. Wrap submit in try-catch
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsSubmitting(true);
-  setErrors({});
-
-  try {
-    // ... validation
-    
-    const { error } = await updatePassword(formData.password);
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Update failed",
-        description: error.message,
-      });
-      return;
-    }
-
-    setIsSuccess(true);
-    toast({
-      title: "Password updated!",
-      description: "Your password has been successfully reset.",
-    });
-  } catch (error) {
-    console.error("Password update error:", error);
-    toast({
-      variant: "destructive",
-      title: "An unexpected error occurred",
-      description: "Please try again or request a new reset link.",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
+  
+  return userRoles?.map((r) => r.role) ?? [];
 };
+
+// In getSession().then():
+if (session?.user) {
+  setUser(session.user);
+  const roleList = await fetchUserRoles(session.user.id);
+  setRoles(roleList);
+  setIsAdmin(roleList.includes("admin") || roleList.includes("super_admin"));
+  setIsSuperAdmin(roleList.includes("super_admin"));
+}
+setLoading(false);
+
+// In onAuthStateChange:
+// Use same fetchUserRoles function, no setTimeout
 ```
 
-### App.tsx Global Error Handler
+## Why This Fixes The Issue
 
-```typescript
-useEffect(() => {
-  const handleRejection = (event: PromiseRejectionEvent) => {
-    console.error("Unhandled rejection:", event.reason);
-    toast.error("An error occurred. Please try again.");
-    event.preventDefault();
-  };
+| Before | After |
+|--------|-------|
+| Roles fetched only in `onAuthStateChange` | Roles fetched in both places |
+| `loading = false` before roles loaded | `loading = false` only after roles fetched |
+| `setTimeout` causes unpredictable timing | Direct async/await for predictable flow |
+| No error handling for role fetch | Console logging for debugging |
 
-  window.addEventListener("unhandledrejection", handleRejection);
-  return () => window.removeEventListener("unhandledrejection", handleRejection);
-}, []);
-```
-
-### useAuth.ts Improvement
-
-```typescript
-const updatePassword = async (newPassword: string) => {
-  // Verify we have an active session
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (!session) {
-    return { error: new Error("No active session. Please use the reset link from your email.") };
-  }
-
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  });
-  
-  return { error };
-};
-```
-
-## Testing Plan
+## Testing
 
 After implementation:
-1. Request password reset from login modal
-2. Click link in email
-3. Verify reset form appears (not "Invalid Link" message)
-4. Enter new password and submit
-5. Verify success message appears
-6. Sign in with new password
-7. Verify login succeeds
+1. Sign out completely
+2. Sign in as `richard1king1@gmail.com`
+3. Navigate to `/admin`
+4. Verify the admin dashboard loads (not "Access Denied")
+5. Verify "Access Control" menu item appears (super_admin only)
 
-## Edge Cases to Handle
-
-- User clicks same reset link twice (token consumed)
-- User has multiple reset emails and clicks old one
-- Session expires while user is typing new password
-- Network error during password update
-- User navigates away and back to reset page
