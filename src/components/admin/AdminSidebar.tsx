@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { CompactIntegrationStatus } from "./CompactIntegrationStatus";
 
 interface AdminSidebarProps {
   isSuperAdmin: boolean;
@@ -53,7 +54,9 @@ export function AdminSidebar({ isSuperAdmin, onSignOut, pendingApplicationsCount
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         {!collapsed && (
-          <span className="text-xl font-bold gradient-text">Autodox Admin</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold gradient-text">Autodox Admin</span>
+          </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
@@ -62,6 +65,13 @@ export function AdminSidebar({ isSuperAdmin, onSignOut, pendingApplicationsCount
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       </div>
+
+      {/* Compact Integration Status */}
+      {!collapsed && (
+        <div className="px-3 py-2 border-b border-sidebar-border">
+          <CompactIntegrationStatus />
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
