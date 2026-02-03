@@ -1,175 +1,74 @@
-# Autodox Platform - External Deployment Guide
 
-## Overview
 
-This guide covers deploying the Autodox platform to an external Supabase instance with Netlify hosting.
+# Plan: Enable Password Reset via Resend
 
-**Target Supabase Project:** `iqluzpzttzoaybbjvtsr`
+## Problem Analysis
 
----
+The current password reset flow uses Supabase's native email system, which:
+1. Has stricter rate limits than Resend
+2. Uses default Supabase email templates (not branded)
+3. Ignores the existing `send-password-reset` edge function entirely
 
-## Files Created
+## Solution: Configure Resend as Custom SMTP in Supabase
 
-| File | Purpose |
-|------|---------|
-| `supabase/schema.sql` | Consolidated database schema (~1000 lines) |
-| `netlify.toml` | Netlify build + SPA routing config |
+The cleanest approach is to configure Supabase to use Resend's SMTP server for all authentication emails. This way:
+- All auth emails (password reset, verification, magic links) will go through Resend
+- Supabase's secure token generation remains intact
+- No code changes needed - just configuration
 
----
+### Step 1: Get Resend SMTP Credentials
 
-## Deployment Steps
+In your Resend dashboard:
+1. Go to **SMTP** section (https://resend.com/settings/smtp)
+2. Note down:
+   - Host: `smtp.resend.com`
+   - Port: `465` (SSL) or `587` (TLS)
+   - Username: `resend`
+   - Password: Your API key (`re_xxxxx`)
 
-### Step 1: Import Database Schema
+### Step 2: Configure Supabase Auth SMTP
 
-1. Go to your Supabase dashboard: https://supabase.com/dashboard/project/iqluzpzttzoaybbjvtsr
-2. Navigate to **SQL Editor**
-3. Copy the entire contents of `supabase/schema.sql`
-4. Paste and click **Run**
-5. Wait for completion (this creates all tables, functions, policies, and seed data)
+In your external Supabase dashboard (https://supabase.com/dashboard/project/iqluzpzttzoaybbjvtsr):
 
-### Step 2: Create Auth Trigger (REQUIRED)
+1. Go to **Authentication** → **Email Templates** → **SMTP Settings**
+2. Enable custom SMTP and enter:
+   - Sender email: `noreply@yourdomain.com` (must match verified Resend domain)
+   - Sender name: `Autodox`
+   - Host: `smtp.resend.com`
+   - Port: `465`
+   - Username: `resend`
+   - Password: Your `RESEND_API_KEY`
+3. Click **Save**
 
-After the schema import, run this separately in SQL Editor:
+### Step 3: Customize Email Templates (Optional)
 
-```sql
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
-```
+In the same **Email Templates** section, customize:
+- **Reset Password** template with your branded HTML
+- **Confirm Signup** template (currently using the edge function, but can consolidate here)
 
-> **Why separate?** This trigger targets the `auth` schema which cannot be modified in standard migration files.
+## Alternative: Custom Token Flow
 
-### Step 3: Configure Supabase Secrets
+If you prefer using the existing `send-password-reset` edge function for more control, we would need to:
 
-In your Supabase dashboard, go to **Settings → Edge Functions → Secrets** and add:
+1. Create a `password_reset_tokens` table to store custom tokens
+2. Modify `resetPassword()` to generate a token, store it, then call the edge function
+3. Update `ResetPassword.tsx` to validate our custom tokens
 
-| Secret | Purpose |
-|--------|---------|
-| `RESEND_API_KEY` | Email sending via Resend |
-| `NETLIFY_ACCESS_TOKEN` | Netlify API authentication |
-| `NETLIFY_SITE_ID` | Target Netlify site for custom domains |
-
-### Step 4: Deploy Edge Functions
-
-From your local machine with Supabase CLI installed:
-
-```bash
-# Login and link to project
-supabase login
-supabase link --project-ref iqluzpzttzoaybbjvtsr
-
-# Deploy all edge functions
-supabase functions deploy verify-domain
-supabase functions deploy provision-ssl
-supabase functions deploy check-domain-status
-supabase functions deploy serve-brand-landing
-supabase functions deploy notify-application-status --no-verify-jwt
-supabase functions deploy send-contact-notification
-supabase functions deploy send-password-reset --no-verify-jwt
-supabase functions deploy send-signup-verification --no-verify-jwt
-```
-
-### Step 5: Deploy to Netlify
-
-1. Push code to your Git repository
-2. Connect repository to Netlify
-3. Configure environment variables in Netlify dashboard:
-
-| Variable | Value |
-|----------|-------|
-| `VITE_SUPABASE_URL` | `https://iqluzpzttzoaybbjvtsr.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Your anon key from Supabase dashboard |
-| `VITE_SUPABASE_PROJECT_ID` | `iqluzpzttzoaybbjvtsr` |
-
-4. Deploy!
+This is more complex but gives full control over the email content and flow.
 
 ---
 
-## Schema Contents
+## Recommended Approach
 
-The consolidated schema includes:
+**Use Option 1 (SMTP Configuration)** because:
+- No code changes required
+- Maintains Supabase's secure token handling
+- All auth emails become branded automatically
+- Simpler to maintain
 
-### Extensions
-- `pg_net` for HTTP calls from database triggers
+## Technical Notes
 
-### Enums (6)
-- `application_status`: pending, approved, rejected
-- `app_role`: admin, super_admin, user
-- `brand_status`: provisioning, active, suspended, archived
-- `template_status`: draft, published, disabled
-- `landing_base_layout`: 8 layout types
-- `domain_status`: pending, verifying, verified, provisioning_ssl, active, failed
+- The `send-password-reset` edge function can be removed after SMTP is configured (it's currently unused)
+- Rate limits will be determined by Resend instead of Supabase
+- The existing `ResetPassword.tsx` page will continue to work as-is
 
-### Tables (9)
-- `profiles` - User profile data
-- `applications` - SMS service applications
-- `user_roles` - RBAC roles
-- `brands` - Multi-tenant brand management
-- `landing_templates` - Template library
-- `template_activity_log` - Immutable audit trail
-- `portal_configs` - White-label theming
-- `tickets` - Support tickets
-- `contact_submissions` - Contact form submissions
-
-### Functions (7)
-- `handle_new_user()` - Auto-create profile on signup
-- `update_updated_at_column()` - Timestamp management
-- `has_role()` - Role checking
-- `is_admin()` - Admin verification
-- `increment_template_version()` - Auto-version templates
-- `prevent_activity_log_modification()` - Audit log protection
-- `notify_application_status_change()` - Webhook trigger
-
-### RLS Policies (30+)
-Comprehensive row-level security for all tables
-
-### Seed Data
-60 pre-built landing page templates across 8 categories
-
----
-
-## Edge Functions
-
-| Function | JWT | Purpose |
-|----------|-----|---------|
-| `verify-domain` | Required | DNS TXT record verification |
-| `provision-ssl` | Required | Register domain with Netlify |
-| `check-domain-status` | Required | Poll SSL certificate status |
-| `serve-brand-landing` | Required | Resolve brand from Host header |
-| `notify-application-status` | **None** | Application status webhooks |
-| `send-contact-notification` | Required | Contact form emails |
-| `send-password-reset` | **None** | Password reset emails |
-| `send-signup-verification` | **None** | Signup verification emails |
-
----
-
-## Custom Domain Flow
-
-```
-1. Admin enters domain → domain_status = 'pending'
-2. DNS instructions shown (TXT record + A/CNAME)
-3. verify-domain checks DNS → domain_status = 'verified'
-4. provision-ssl registers with Netlify → domain_status = 'provisioning_ssl'
-5. check-domain-status polls → domain_status = 'active'
-6. serve-brand-landing resolves requests by Host header
-```
-
----
-
-## Troubleshooting
-
-### "Function not found" errors
-Ensure all edge functions are deployed with correct `--no-verify-jwt` flags
-
-### Auth trigger not working
-Manually run the auth trigger SQL in Step 2
-
-### Custom domains not working
-1. Check DNS propagation (can take 24-48 hours)
-2. Verify NETLIFY_ACCESS_TOKEN and NETLIFY_SITE_ID secrets are set
-3. Check edge function logs in Supabase dashboard
-
----
-
-*Last updated: January 2026*
