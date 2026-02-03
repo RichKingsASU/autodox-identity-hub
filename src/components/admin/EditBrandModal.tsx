@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DomainManagementCard from "./DomainManagementCard";
+import { BrandDomainTab } from "./BrandDomainTab";
 import {
   Dialog,
   DialogContent,
@@ -201,9 +201,10 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
           </TabsContent>
 
           <TabsContent value="domain" className="mt-4">
-            <DomainManagementCard
+            <BrandDomainTab
               brandId={brand.id}
-              brandName={brand.name}
+              initialDomain={brand.domain}
+              onDomainChange={onRefresh}
             />
           </TabsContent>
 

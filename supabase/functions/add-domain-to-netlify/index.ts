@@ -13,10 +13,10 @@ serve(async (req) => {
     }
 
     try {
-        const { domain_id } = await req.json()
+        const { brand_id } = await req.json()
 
-        if (!domain_id) {
-            throw new Error('domain_id is required')
+        if (!brand_id) {
+            throw new Error('brand_id is required')
         }
 
         // Initialize Supabase client with service role
@@ -25,34 +25,78 @@ serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Get domain details from database
-        const { data: domain, error: fetchError } = await supabase
-            .from('domains')
-            .select('*')
-            .eq('id', domain_id)
+        // Get brand details from database (domains are stored in brands table)
+        const { data: brand, error: fetchError } = await supabase
+            .from('brands')
+            .select('id, domain, domain_status, domain_verification_token, domain_verified_at, cloudflare_hostname_id')
+            .eq('id', brand_id)
             .single()
 
         if (fetchError) {
-            throw new Error(`Failed to fetch domain: ${fetchError.message}`)
+            throw new Error(`Failed to fetch brand: ${fetchError.message}`)
         }
 
-        if (!domain) {
-            throw new Error('Domain not found')
+        if (!brand) {
+            throw new Error('Brand not found')
         }
 
-        console.log(`Adding domain ${domain.domain} to Netlify...`)
+        if (!brand.domain) {
+            throw new Error('No domain configured for this brand')
+        }
+
+        // Verify domain ownership was completed
+        if (brand.domain_status !== 'verified' && brand.domain_status !== 'provisioning_ssl') {
+            throw new Error('Domain must be verified before SSL provisioning')
+        }
+
+        console.log(`Adding domain ${brand.domain} to Netlify for brand ${brand_id}...`)
+
+        // Update status to provisioning
+        await supabase
+            .from('brands')
+            .update({ domain_status: 'provisioning_ssl' })
+            .eq('id', brand_id)
+
+        const netlifyToken = Deno.env.get('NETLIFY_ACCESS_TOKEN')
+        const netlifySiteId = Deno.env.get('NETLIFY_SITE_ID')
+
+        // If no Netlify credentials, simulate success for development
+        if (!netlifyToken || !netlifySiteId) {
+            console.log('Netlify credentials not configured, simulating success...')
+            
+            await supabase
+                .from('brands')
+                .update({
+                    domain_status: 'active',
+                    ssl_status: 'issued',
+                    cloudflare_hostname_id: `simulated_${Date.now()}`,
+                    domain_error: null,
+                })
+                .eq('id', brand_id)
+
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    simulated: true,
+                    message: 'Domain configured (simulated - no Netlify credentials)',
+                }),
+                {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
+            )
+        }
 
         // Add domain to Netlify via API
         const netlifyResponse = await fetch(
-            `https://api.netlify.com/api/v1/sites/${Deno.env.get('NETLIFY_SITE_ID')}/domains`,
+            `https://api.netlify.com/api/v1/sites/${netlifySiteId}/domains`,
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${Deno.env.get('NETLIFY_ACCESS_TOKEN')}`,
+                    'Authorization': `Bearer ${netlifyToken}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    domain_name: domain.domain
+                    domain_name: brand.domain
                 }),
             }
         )
@@ -62,58 +106,41 @@ serve(async (req) => {
         if (!netlifyResponse.ok) {
             console.error('Netlify API error:', netlifyData)
 
-            // Update domain with error
+            // Update brand with error
             await supabase
-                .from('domains')
+                .from('brands')
                 .update({
-                    status: 'failed',
-                    error_message: netlifyData.message || 'Failed to add domain to Netlify',
+                    domain_status: 'failed',
+                    domain_error: netlifyData.message || 'Failed to add domain to Netlify',
                 })
-                .eq('id', domain_id)
-
-            // Log error event
-            await supabase.from('domain_events').insert({
-                domain_id,
-                event_type: 'error',
-                details: { error: netlifyData },
-            })
+                .eq('id', brand_id)
 
             throw new Error(`Netlify API error: ${JSON.stringify(netlifyData)}`)
         }
 
         console.log('Domain added to Netlify successfully:', netlifyData)
 
-        // Update domain with Netlify ID and DNS records
+        // Update brand with Netlify ID and success status
         const { error: updateError } = await supabase
-            .from('domains')
+            .from('brands')
             .update({
-                netlify_domain_id: netlifyData.id,
-                dns_records: netlifyData.dns_records || [],
-                status: 'verifying',
-                error_message: null,
+                cloudflare_hostname_id: netlifyData.id, // Reusing this field for Netlify domain ID
+                domain_status: 'active',
+                ssl_status: netlifyData.ssl?.state || 'provisioning',
+                domain_error: null,
             })
-            .eq('id', domain_id)
+            .eq('id', brand_id)
 
         if (updateError) {
-            console.error('Failed to update domain:', updateError)
+            console.error('Failed to update brand:', updateError)
             throw updateError
         }
-
-        // Log event
-        await supabase.from('domain_events').insert({
-            domain_id,
-            event_type: 'netlify_added',
-            details: {
-                netlify_domain_id: netlifyData.id,
-                dns_records: netlifyData.dns_records
-            },
-        })
 
         return new Response(
             JSON.stringify({
                 success: true,
-                dns_records: netlifyData.dns_records,
                 netlify_domain_id: netlifyData.id,
+                ssl_status: netlifyData.ssl?.state,
             }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -124,6 +151,7 @@ serve(async (req) => {
 
         return new Response(
             JSON.stringify({
+                success: false,
                 error: error instanceof Error ? error.message : 'An unexpected error occurred'
             }),
             {
