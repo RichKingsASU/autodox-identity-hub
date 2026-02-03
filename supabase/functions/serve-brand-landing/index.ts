@@ -65,6 +65,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Type assertion for RPC result
+    const brandRouteData = routeData as { brand_id: string };
+
     // Fetch full brand and template details since RPC only returns core fields
     const { data: brand, error: brandError } = await supabase
       .from("brands")
@@ -84,11 +87,11 @@ Deno.serve(async (req) => {
           sections_enabled
         )
       `)
-      .eq("id", routeData.brand_id)
+      .eq("id", brandRouteData.brand_id)
       .single();
 
     if (brandError || !brand) {
-      console.error(`Failed to fetch full brand details for ID: ${routeData.brand_id}`, brandError);
+      console.error(`Failed to fetch full brand details for ID: ${brandRouteData.brand_id}`, brandError);
       throw new Error("Failed to fetch brand details");
     }
 
