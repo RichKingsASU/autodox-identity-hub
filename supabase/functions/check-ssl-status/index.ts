@@ -13,10 +13,10 @@ serve(async (req) => {
     }
 
     try {
-        const { domain_id } = await req.json()
+        const { brand_id } = await req.json()
 
-        if (!domain_id) {
-            throw new Error('domain_id is required')
+        if (!brand_id) {
+            throw new Error('brand_id is required')
         }
 
         // Initialize Supabase client
@@ -25,18 +25,26 @@ serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Get domain details
-        const { data: domain, error: fetchError } = await supabase
-            .from('domains')
-            .select('*')
-            .eq('id', domain_id)
+        // Get brand details
+        const { data: brand, error: fetchError } = await supabase
+            .from('brands')
+            .select('id, name, domain, domain_status, ssl_status, cloudflare_hostname_id')
+            .eq('id', brand_id)
             .single()
 
-        if (fetchError || !domain) {
-            throw new Error('Domain not found')
+        if (fetchError || !brand) {
+            throw new Error('Brand not found')
         }
 
-        console.log(`Checking SSL status for domain ${domain.domain}...`)
+        if (!brand.domain) {
+            throw new Error('Brand has no domain configured')
+        }
+
+        if (!brand.cloudflare_hostname_id) {
+            throw new Error('Domain not yet added to Netlify')
+        }
+
+        console.log(`Checking SSL status for domain ${brand.domain}...`)
 
         // Check SSL status via Netlify API
         const netlifyResponse = await fetch(
@@ -58,53 +66,36 @@ serve(async (req) => {
         console.log('Netlify SSL data:', sslData)
 
         // Find SSL cert for this domain
-        const domainSSL = sslData.domains?.find((d: any) => d.domain === domain.domain)
+        const domainSSL = sslData.domains?.find((d: any) => d.domain === brand.domain)
         const sslActive = domainSSL?.state === 'issued'
         const sslState = domainSSL?.state || 'pending'
 
-        console.log(`SSL status for ${domain.domain}: ${sslState}`)
+        console.log(`SSL status for ${brand.domain}: ${sslState}`)
 
-        // Update domain based on SSL status
-        if (sslActive && domain.status !== 'active') {
+        // Update brand based on SSL status
+        if (sslActive && brand.domain_status !== 'active') {
             // SSL is active, mark domain as active
             await supabase
-                .from('domains')
+                .from('brands')
                 .update({
-                    status: 'active',
+                    domain_status: 'active',
                     ssl_status: 'issued',
-                    error_message: null,
+                    domain_error: null,
                 })
-                .eq('id', domain_id)
+                .eq('id', brand_id)
 
-            // Log activation event
-            await supabase.from('domain_events').insert({
-                domain_id,
-                event_type: 'activated',
-                details: {
-                    ssl_state: 'issued',
-                    activated_at: new Date().toISOString(),
-                },
-            })
-
-            console.log(`Domain ${domain.domain} activated successfully`)
-        } else if (domain.status === 'verified' && sslState !== 'issued') {
+            console.log(`Domain ${brand.domain} activated successfully`)
+        } else if (brand.domain_status === 'verified' && sslState !== 'issued') {
             // DNS verified but SSL not yet issued, update to provisioning
             await supabase
-                .from('domains')
+                .from('brands')
                 .update({
-                    status: 'provisioning_ssl',
+                    domain_status: 'provisioning_ssl',
                     ssl_status: sslState,
                 })
-                .eq('id', domain_id)
+                .eq('id', brand_id)
 
-            // Log SSL provisioning event
-            await supabase.from('domain_events').insert({
-                domain_id,
-                event_type: 'ssl_provisioning',
-                details: { ssl_state: sslState },
-            })
-
-            console.log(`Domain ${domain.domain} SSL provisioning in progress`)
+            console.log(`Domain ${brand.domain} SSL provisioning in progress`)
         }
 
         return new Response(
@@ -112,6 +103,8 @@ serve(async (req) => {
                 ssl_active: sslActive,
                 ssl_state: sslState,
                 ssl_data: domainSSL,
+                brand_id: brand.id,
+                domain: brand.domain,
             }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },

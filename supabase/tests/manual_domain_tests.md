@@ -6,9 +6,22 @@
    - `NETLIFY_ACCESS_TOKEN` in Supabase secrets
    - `NETLIFY_SITE_ID` in Supabase secrets
 
-2. **Test Domains Available**:
-   - 3 real domains you control for DNS configuration
-   - Suggested: `qa-alpha.yourdomain.com`, `qa-beta.yourdomain.com`, `qa-gamma.yourdomain.com`
+2. **Test Domain Available**:
+   - A real domain you control for DNS configuration
+   - Suggested: `qa-test.yourdomain.com`
+
+---
+
+## Architecture Note
+
+Domain data is stored directly in the `brands` table (one domain per brand):
+- `domain` - the custom domain
+- `domain_status` - enum: pending, verifying, verified, provisioning_ssl, active, failed
+- `domain_verification_token` - DNS verification token
+- `domain_verified_at` - timestamp when DNS verified
+- `ssl_status` - SSL certificate status
+- `domain_error` - error message if failed
+- `cloudflare_hostname_id` - Netlify domain ID
 
 ---
 
@@ -16,23 +29,20 @@
 
 ### Setup
 ```sql
--- Create test brand
-INSERT INTO public.brands (name, slug, owner_user_id)
-VALUES ('QA Alpha', 'qa-alpha', auth.uid())
-RETURNING id;
+-- Get an existing brand ID or create one
+SELECT id, name, slug FROM public.brands LIMIT 5;
 -- Note the brand_id for next steps
 ```
 
 ### Execute
 ```bash
 # Call add-domain-to-netlify edge function
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to-netlify \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/add-domain-to-netlify \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "brand_id": "<BRAND_ID>",
-    "domain": "qa-alpha.yourdomain.com",
-    "is_primary": true
+    "domain": "qa-test.yourdomain.com"
   }'
 ```
 
@@ -40,12 +50,11 @@ curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to
 ```json
 {
   "success": true,
-  "domain_id": "<UUID>",
   "netlify_domain_id": "<NETLIFY_ID>",
   "dns_records": [
     {
       "type": "A",
-      "hostname": "qa-alpha.yourdomain.com",
+      "hostname": "qa-test.yourdomain.com",
       "value": "75.2.60.5"
     }
   ]
@@ -54,15 +63,11 @@ curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to
 
 ### Verification
 ```sql
--- Check domain was created
-SELECT * FROM public.domains WHERE domain = 'qa-alpha.yourdomain.com';
--- Expected: status = 'verifying', netlify_domain_id populated
-
--- Check event was logged
-SELECT * FROM public.domain_events 
-WHERE domain_id = (SELECT id FROM public.domains WHERE domain = 'qa-alpha.yourdomain.com')
-ORDER BY created_at DESC;
--- Expected: event_type = 'netlify_added'
+-- Check brand was updated with domain info
+SELECT domain, domain_status, cloudflare_hostname_id 
+FROM public.brands 
+WHERE id = '<BRAND_ID>';
+-- Expected: domain = 'qa-test.yourdomain.com', domain_status = 'verifying', cloudflare_hostname_id populated
 ```
 
 ---
@@ -77,19 +82,19 @@ ORDER BY created_at DESC;
 ### Verify DNS Propagation
 ```bash
 # Check DNS resolution
-nslookup qa-alpha.yourdomain.com
+nslookup qa-test.yourdomain.com
 
 # Or use dig
-dig qa-alpha.yourdomain.com
+dig qa-test.yourdomain.com
 ```
 
 ### Trigger Verification
 ```bash
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/verify-domain-dns \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/verify-domain \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "domain_id": "<DOMAIN_ID>"
+    "brand_id": "<BRAND_ID>"
   }'
 ```
 
@@ -98,22 +103,16 @@ curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/verify-domain
 {
   "success": true,
   "verified": true,
-  "dns_zone_id": "<ZONE_ID>"
+  "message": "Domain verified successfully"
 }
 ```
 
 ### Verification
 ```sql
 -- Check domain status updated
-SELECT status, verified_at FROM public.domains 
-WHERE domain = 'qa-alpha.yourdomain.com';
--- Expected: status = 'verified', verified_at populated
-
--- Check event logged
-SELECT * FROM public.domain_events 
-WHERE domain_id = (SELECT id FROM public.domains WHERE domain = 'qa-alpha.yourdomain.com')
-AND event_type = 'dns_verified';
--- Expected: 1 row
+SELECT domain_status, domain_verified_at FROM public.brands 
+WHERE id = '<BRAND_ID>';
+-- Expected: domain_status = 'verified', domain_verified_at populated
 ```
 
 ---
@@ -123,43 +122,40 @@ AND event_type = 'dns_verified';
 ### Execute
 ```bash
 # Check SSL status (repeat every 15-30 minutes until active)
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/check-ssl-status \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/check-ssl-status \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "domain_id": "<DOMAIN_ID>"
+    "brand_id": "<BRAND_ID>"
   }'
 ```
 
 ### Expected Result (Initially)
 ```json
 {
-  "success": true,
-  "ssl_state": "pending"
+  "ssl_active": false,
+  "ssl_state": "pending",
+  "brand_id": "<BRAND_ID>",
+  "domain": "qa-test.yourdomain.com"
 }
 ```
 
 ### Expected Result (After 1-2 hours)
 ```json
 {
-  "success": true,
+  "ssl_active": true,
   "ssl_state": "issued",
-  "status": "active"
+  "brand_id": "<BRAND_ID>",
+  "domain": "qa-test.yourdomain.com"
 }
 ```
 
 ### Verification
 ```sql
 -- Check domain is active
-SELECT status, ssl_status FROM public.domains 
-WHERE domain = 'qa-alpha.yourdomain.com';
--- Expected: status = 'active', ssl_status = 'issued'
-
--- Check events logged
-SELECT event_type, created_at FROM public.domain_events 
-WHERE domain_id = (SELECT id FROM public.domains WHERE domain = 'qa-alpha.yourdomain.com')
-ORDER BY created_at ASC;
--- Expected sequence: created, netlify_added, dns_verified, ssl_provisioning, activated
+SELECT domain_status, ssl_status FROM public.brands 
+WHERE id = '<BRAND_ID>';
+-- Expected: domain_status = 'active', ssl_status = 'issued'
 ```
 
 ---
@@ -169,13 +165,13 @@ ORDER BY created_at ASC;
 ### Execute
 ```bash
 # Test HTTPS access
-curl -I https://qa-alpha.yourdomain.com
+curl -I https://qa-test.yourdomain.com
 
 # Test brand resolution
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/domain-resolver \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/domain-resolver \
   -H "Content-Type: application/json" \
   -d '{
-    "hostname": "qa-alpha.yourdomain.com"
+    "hostname": "qa-test.yourdomain.com"
   }'
 ```
 
@@ -189,107 +185,74 @@ HTTP/2 200
 ### Expected Result (Brand Resolution)
 ```json
 {
-  "success": true,
-  "brand": {
-    "id": "<BRAND_ID>",
-    "name": "QA Alpha",
-    "slug": "qa-alpha",
-    "settings": {...},
-    "template": {...}
-  }
+  "brand_id": "<BRAND_ID>",
+  "brand_name": "Brand Name",
+  "brand_slug": "brand-slug",
+  "template": {...},
+  "settings": {...}
 }
 ```
 
 ---
 
-## Test 5: Secondary Domain (Non-Primary)
+## Test 5: Failure Modes
 
-### Execute
+### Test 5.1: Invalid Domain Format
 ```bash
-# Add secondary domain to same brand
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to-netlify \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/add-domain-to-netlify \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "brand_id": "<BRAND_ID>",
-    "domain": "qa-alpha-secondary.yourdomain.com",
-    "is_primary": false
+    "domain": "invalid domain with spaces"
   }'
 ```
 
-### Verification
-```sql
--- Check both domains exist
-SELECT domain, is_primary, status FROM public.domains 
-WHERE brand_id = '<BRAND_ID>'
-ORDER BY is_primary DESC;
--- Expected: 2 rows, one with is_primary = true, one with is_primary = false
+**Expected**: `{"error": "Invalid domain format"}`
 
--- Verify only one primary
-SELECT COUNT(*) FROM public.domains 
-WHERE brand_id = '<BRAND_ID>' AND is_primary = true;
--- Expected: 1
-```
-
----
-
-## Test 6: Failure Modes
-
-### Test 6.1: Invalid Domain Format
+### Test 5.2: Reserved Domain
 ```bash
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to-netlify \
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/add-domain-to-netlify \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "brand_id": "<BRAND_ID>",
-    "domain": "invalid domain with spaces",
-    "is_primary": false
+    "domain": "test.netlify.app"
   }'
 ```
 
-**Expected**: `{"success": false, "error": "Invalid domain format"}`
+**Expected**: `{"error": "Reserved domain"}` or similar
 
-### Test 6.2: Reserved Domain
+### Test 5.3: Duplicate Domain
 ```bash
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to-netlify \
+# Try to add same domain to another brand
+curl -X POST https://eecxwrxxtbaecbblpovl.supabase.co/functions/v1/add-domain-to-netlify \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
-    "brand_id": "<BRAND_ID>",
-    "domain": "agents-institute.com",
-    "is_primary": false
+    "brand_id": "<ANOTHER_BRAND_ID>",
+    "domain": "qa-test.yourdomain.com"
   }'
 ```
 
-**Expected**: `{"success": false, "error": "Reserved domain"}`
-
-### Test 6.3: Duplicate Domain
-```bash
-# Try to add same domain twice
-curl -X POST https://iqluzpzttzoaybbjvtsr.supabase.co/functions/v1/add-domain-to-netlify \
-  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "brand_id": "<BRAND_ID>",
-    "domain": "qa-alpha.yourdomain.com",
-    "is_primary": false
-  }'
-```
-
-**Expected**: `{"success": false, "error": "Domain already exists"}`
+**Expected**: `{"error": "Domain already assigned to another brand"}`
 
 ---
 
 ## Cleanup
 
 ```sql
--- Remove test domains
-DELETE FROM public.domain_events 
-WHERE domain_id IN (SELECT id FROM public.domains WHERE brand_id = '<BRAND_ID>');
-
-DELETE FROM public.domains WHERE brand_id = '<BRAND_ID>');
-
-DELETE FROM public.brands WHERE id = '<BRAND_ID>';
+-- Remove test domain from brand
+UPDATE public.brands 
+SET 
+  domain = NULL,
+  domain_status = NULL,
+  domain_verification_token = NULL,
+  domain_verified_at = NULL,
+  ssl_status = NULL,
+  domain_error = NULL,
+  cloudflare_hostname_id = NULL
+WHERE id = '<BRAND_ID>';
 ```
 
 ---
@@ -301,11 +264,8 @@ DELETE FROM public.brands WHERE id = '<BRAND_ID>';
 - [ ] DNS verification works after configuration
 - [ ] SSL provisioning completes successfully
 - [ ] HTTPS access works with valid certificate
-- [ ] Brand resolution returns correct brand
-- [ ] Secondary domain routing works
-- [ ] Primary domain remains unchanged
+- [ ] Brand resolution returns correct brand data
 - [ ] Invalid domains rejected
 - [ ] Reserved domains blocked
 - [ ] Duplicate domains prevented
-- [ ] All events logged correctly
 - [ ] State transitions follow expected flow
