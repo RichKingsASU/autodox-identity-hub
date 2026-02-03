@@ -1,74 +1,122 @@
 
 
-# Plan: Enable Password Reset via Resend
+# Plan: Add Template Assignment to Brands Tab
 
-## Problem Analysis
+## Overview
+Add the ability to assign landing page templates to brands directly from the Brands admin tab. This includes displaying the current template, and allowing admins to change or assign templates.
 
-The current password reset flow uses Supabase's native email system, which:
-1. Has stricter rate limits than Resend
-2. Uses default Supabase email templates (not branded)
-3. Ignores the existing `send-password-reset` edge function entirely
+## Part 1: Fix Build Errors (Edge Functions)
 
-## Solution: Configure Resend as Custom SMTP in Supabase
+Several edge functions have TypeScript errors due to untyped error handling and missing type definitions.
 
-The cleanest approach is to configure Supabase to use Resend's SMTP server for all authentication emails. This way:
-- All auth emails (password reset, verification, magic links) will go through Resend
-- Supabase's secure token generation remains intact
-- No code changes needed - just configuration
+### Files to Fix:
+- `supabase/functions/add-domain-to-netlify/index.ts`
+- `supabase/functions/check-ssl-status/index.ts`
+- `supabase/functions/domain-resolver/index.ts`
+- `supabase/functions/resend-domain-status/index.ts`
+- `supabase/functions/send-brand-event-email/index.ts`
+- `supabase/functions/serve-brand-landing/index.ts`
+- `supabase/functions/verify-domain-dns/index.ts`
 
-### Step 1: Get Resend SMTP Credentials
+### Fix Pattern:
+Replace `error.message` with proper type-safe access:
+```typescript
+// Before
+error: error.message || 'An unexpected error occurred'
 
-In your Resend dashboard:
-1. Go to **SMTP** section (https://resend.com/settings/smtp)
-2. Note down:
-   - Host: `smtp.resend.com`
-   - Port: `465` (SSL) or `587` (TLS)
-   - Username: `resend`
-   - Password: Your API key (`re_xxxxx`)
+// After  
+error: error instanceof Error ? error.message : 'An unexpected error occurred'
+```
 
-### Step 2: Configure Supabase Auth SMTP
-
-In your external Supabase dashboard (https://supabase.com/dashboard/project/iqluzpzttzoaybbjvtsr):
-
-1. Go to **Authentication** → **Email Templates** → **SMTP Settings**
-2. Enable custom SMTP and enter:
-   - Sender email: `noreply@yourdomain.com` (must match verified Resend domain)
-   - Sender name: `Autodox`
-   - Host: `smtp.resend.com`
-   - Port: `465`
-   - Username: `resend`
-   - Password: Your `RESEND_API_KEY`
-3. Click **Save**
-
-### Step 3: Customize Email Templates (Optional)
-
-In the same **Email Templates** section, customize:
-- **Reset Password** template with your branded HTML
-- **Confirm Signup** template (currently using the edge function, but can consolidate here)
-
-## Alternative: Custom Token Flow
-
-If you prefer using the existing `send-password-reset` edge function for more control, we would need to:
-
-1. Create a `password_reset_tokens` table to store custom tokens
-2. Modify `resetPassword()` to generate a token, store it, then call the edge function
-3. Update `ResetPassword.tsx` to validate our custom tokens
-
-This is more complex but gives full control over the email content and flow.
+For `serve-brand-landing/index.ts`, add type for RPC result:
+```typescript
+interface BrandRouteResult {
+  brand_id: string;
+  // other fields as needed
+}
+```
 
 ---
 
-## Recommended Approach
+## Part 2: Add Template Column to Brand Table
 
-**Use Option 1 (SMTP Configuration)** because:
-- No code changes required
-- Maintains Supabase's secure token handling
-- All auth emails become branded automatically
-- Simpler to maintain
+### File: `src/components/admin/BrandPortfolioTable.tsx`
 
-## Technical Notes
+Add a new "Template" column showing the currently assigned template name (or "None").
 
-- The `send-password-reset` edge function can be removed after SMTP is configured (it's currently unused)
-- Rate limits will be determined by Resend instead of Supabase
-- The existing `ResetPassword.tsx` page will continue to work as-is
+### Changes:
+1. Accept `templates` prop (list of templates for lookup)
+2. Add "Template" column header after "Domain Status"
+3. Display template name or "None" badge for each brand
+4. Show template version badge (e.g., "v3")
+
+---
+
+## Part 3: Add Template Tab to Edit Brand Modal
+
+### File: `src/components/admin/EditBrandModal.tsx`
+
+Add a third tab for template management alongside "General" and "Domain".
+
+### Changes:
+1. Add `LayoutTemplate` icon import
+2. Add new "Template" tab trigger
+3. Create template selection content:
+   - Show current template info (name, version, applied date)
+   - Dropdown to select new template (filtered to published only)
+   - "Apply Template" button
+   - "Revert to Previous" button (if previous exists)
+4. Wire up `useTemplates` hook for `applyTemplateToBrand` and `revertBrandTemplate`
+5. Add `useAuth` hook to get current admin user ID
+
+---
+
+## Part 4: Update Brand Type & Hook
+
+### File: `src/hooks/useBrands.ts`
+
+Extend the Brand interface and fetch to include template relationship:
+
+```typescript
+// Add to Brand interface
+active_template_id: string | null;
+applied_template_version: number | null;
+template_applied_at: string | null;
+// Add template name via join
+active_template_name?: string;
+```
+
+Update `fetchBrands` query to join with `landing_templates`:
+```typescript
+.select(`
+  *,
+  landing_templates:active_template_id (
+    id,
+    name,
+    version
+  )
+`)
+```
+
+---
+
+## Implementation Summary
+
+| Component | Change |
+|-----------|--------|
+| 7 Edge Functions | Fix TypeScript error handling |
+| BrandPortfolioTable | Add Template column |
+| EditBrandModal | Add Template tab with assign/revert |
+| useBrands | Include template join in query |
+
+## User Flow
+
+1. Admin opens Brands tab
+2. Sees "Template" column showing assigned template or "None"
+3. Clicks "Edit" on a brand
+4. Navigates to "Template" tab
+5. Selects a published template from dropdown
+6. Clicks "Apply Template"
+7. Template is immediately applied to brand
+8. Can revert if needed using "Revert" button
 
