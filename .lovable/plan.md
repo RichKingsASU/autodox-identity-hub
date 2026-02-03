@@ -1,77 +1,93 @@
 
-# Fix Email System and Configure Missing Secrets
+# Fix Netlify Connection Status Detection
 
-## Summary
-The email system is failing because the `RESEND_API_KEY` in Supabase Edge Function secrets is invalid. All 10+ recent email attempts show "API key is invalid" errors. Additionally, secrets for Netlify domain management are missing.
+## Problem Identified
+The `NetlifyConnectionStatus` component uses flawed logic to detect Netlify connectivity:
 
-## Current Issues Found
+1. **Current behavior**: Calls `check-domain-status` edge function with a dummy brandId
+2. **Issue**: The edge function requires authentication (returns 401 if not logged in)
+3. **Bug**: The logic checks if error contains "Netlify" - but auth errors don't contain "Netlify", causing false positives
 
-1. **Email Failures**: All emails failing with 401 "API key is invalid"
-2. **Missing Secrets**: 
-   - `NETLIFY_ACCESS_TOKEN` (required for domain SSL provisioning)
-   - `NETLIFY_SITE_ID` (required for domain SSL provisioning)
+```text
+Current Logic Flow:
+┌─────────────────────┐
+│ Call edge function  │
+└──────────┬──────────┘
+           │
+           v
+┌─────────────────────┐     ┌──────────────────────┐
+│ Error contains      │ NO  │ Show "Connected" ✗   │
+│ "Netlify"?          │────▶│ (Even if auth error!)│
+└──────────┬──────────┘     └──────────────────────┘
+           │ YES
+           v
+┌──────────────────────┐
+│ Show "Not Connected" │
+└──────────────────────┘
+```
 
-## Fix Plan
+## Solution: Dedicated Health Check Endpoint
 
-### Step 1: Verify and Update RESEND_API_KEY
+Create a new edge function specifically for checking Netlify connectivity that:
+- Does NOT require authentication
+- Only checks if `NETLIFY_ACCESS_TOKEN` and `NETLIFY_SITE_ID` secrets are configured
+- Makes a simple API call to verify credentials work
+- Returns clear connected/not-connected status
 
-The `RESEND_API_KEY` secret exists but the stored value is not working. You need to manually update it in Supabase:
+## Implementation Plan
 
-1. Go to your **Supabase Dashboard** → **Project Settings** → **Edge Functions** → **Secrets**
-2. Find `RESEND_API_KEY` and click **Edit**
-3. Paste the new API key: `re_BdMGSMpF_KYBfz6bVyLewKfnCJyGQEGaX`
-4. Save the changes
+### 1. Create `netlify-health-check` Edge Function
+A new edge function at `supabase/functions/netlify-health-check/index.ts` that:
+- Checks for presence of `NETLIFY_ACCESS_TOKEN` and `NETLIFY_SITE_ID` environment variables
+- Makes a test API call to `https://api.netlify.com/api/v1/sites/{SITE_ID}` to verify credentials
+- Returns `{ connected: true }` or `{ connected: false, reason: "..." }`
+- Does NOT require JWT verification (public health endpoint)
 
-**Important**: After updating, wait 30-60 seconds for the edge functions to pick up the new value.
+### 2. Update `NetlifyConnectionStatus` Component
+Modify `src/components/admin/NetlifyConnectionStatus.tsx` to:
+- Call the new `netlify-health-check` endpoint instead of `check-domain-status`
+- Use explicit `connected` boolean from response
+- Handle errors gracefully with appropriate messaging
 
-### Step 2: Redeploy Edge Functions
-
-After updating the secret, I will redeploy all email-related edge functions to ensure they use the updated environment:
-
-- `send-contact-notification`
-- `send-email`
-- `send-brand-event-email`
-- `send-password-reset`
-- `send-signup-verification`
-- `request-password-reset`
-- `notify-application-status`
-
-### Step 3: Test Email System
-
-I will call the `send-contact-notification` edge function with a test payload to verify emails are now sending successfully.
-
-### Step 4: Add Missing Netlify Secrets (Optional)
-
-For full domain management functionality, add these secrets in Supabase:
-
-| Secret Name | Where to Get It |
-|-------------|-----------------|
-| `NETLIFY_ACCESS_TOKEN` | Netlify Dashboard → User Settings → Applications → Personal Access Tokens |
-| `NETLIFY_SITE_ID` | Netlify Dashboard → Your Site → Site Configuration → General → Site ID |
+### 3. Configuration
+Add the new function to `supabase/config.toml` with `verify_jwt = false`
 
 ---
 
 ## Technical Details
 
-### Edge Functions Affected
-All 7 email edge functions use the sender domain `email.agents-institute.com` which matches your verified Resend domain - this is correct.
+### New Edge Function Structure
+```
+supabase/functions/netlify-health-check/
+└── index.ts
+```
 
-### Database Status
-- `email_logs` table: 10+ failed entries with "API key is invalid"
-- `debug_logs` table: Empty (no application-level errors)
+**Logic:**
+1. Check if `NETLIFY_ACCESS_TOKEN` exists → if not, return `{ connected: false, reason: "missing_token" }`
+2. Check if `NETLIFY_SITE_ID` exists → if not, return `{ connected: false, reason: "missing_site_id" }`
+3. Call Netlify API: `GET /api/v1/sites/{SITE_ID}`
+4. If 200 OK → return `{ connected: true, siteName: response.name }`
+5. If 401/403 → return `{ connected: false, reason: "invalid_credentials" }`
+6. If error → return `{ connected: false, reason: "api_error" }`
 
-### Root Cause
-The `RESEND_API_KEY` secret stored in Supabase does not match a valid Resend API key, causing all Resend API calls to return 401 Unauthorized.
+### Component Update
+Replace the inference-based logic with direct response handling:
+```typescript
+const response = await supabase.functions.invoke('netlify-health-check');
+setStatus({
+  connected: response.data?.connected ?? false,
+  checking: false,
+  error: response.data?.reason
+});
+```
 
----
+## Files to Create/Modify
+1. **Create**: `supabase/functions/netlify-health-check/index.ts`
+2. **Modify**: `supabase/config.toml` (add function config)
+3. **Modify**: `src/components/admin/NetlifyConnectionStatus.tsx` (update logic)
 
-## Action Required From You
-
-Before I can implement the fix:
-
-**Confirm you have updated the `RESEND_API_KEY` in Supabase Dashboard → Project Settings → Edge Functions → Secrets**
-
-Once confirmed, I will:
-1. Redeploy all edge functions
-2. Test the email system
-3. Verify successful delivery
+## Expected Outcome
+After implementation:
+- Navigate to `/admin/domains`
+- See **"✅ Netlify Connected"** status (since secrets are now configured)
+- Connection check works regardless of user authentication state
