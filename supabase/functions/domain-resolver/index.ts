@@ -27,16 +27,16 @@ serve(async (req) => {
 
         console.log(`Resolving domain: ${hostname}`)
 
-        // Use the database function to lookup domain
-        const { data, error } = await supabase
-            .rpc('get_brand_by_domain', { hostname })
+        // Query brands table directly for active domain
+        const { data: brand, error } = await supabase
+            .from('brands')
+            .select('id, name, slug, settings, domain, domain_status, active_template_id')
+            .eq('domain', hostname)
+            .eq('domain_status', 'active')
+            .single()
 
-        if (error) {
-            console.error('Database error:', error)
-            throw error
-        }
-
-        if (!data || data.length === 0) {
+        if (error || !brand) {
+            console.log(`Domain not found or inactive: ${hostname}`)
             return new Response(
                 JSON.stringify({
                     error: 'Domain not found or inactive',
@@ -49,15 +49,13 @@ serve(async (req) => {
             )
         }
 
-        const brandConfig = data[0]
-
-        // Fetch the full template details if template_id exists
+        // Fetch the full template details if active_template_id exists
         let template = null
-        if (brandConfig.template_id) {
+        if (brand.active_template_id) {
             const { data: templateData, error: templateError } = await supabase
                 .from('landing_templates')
                 .select('*')
-                .eq('id', brandConfig.template_id)
+                .eq('id', brand.active_template_id)
                 .single()
 
             if (!templateError && templateData) {
@@ -65,17 +63,15 @@ serve(async (req) => {
             }
         }
 
-        console.log(`Resolved ${hostname} to brand: ${brandConfig.brand_name}`)
+        console.log(`Resolved ${hostname} to brand: ${brand.name}`)
 
         return new Response(
             JSON.stringify({
-                brand_id: brandConfig.brand_id,
-                brand_name: brandConfig.brand_name,
-                brand_slug: brandConfig.brand_slug,
+                brand_id: brand.id,
+                brand_name: brand.name,
+                brand_slug: brand.slug,
                 template,
-                settings: brandConfig.brand_settings,
-                domain_id: brandConfig.domain_id,
-                is_primary: brandConfig.is_primary,
+                settings: brand.settings,
             }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
