@@ -14,6 +14,21 @@ export interface BrandDomainState {
   cloudflare_hostname_id: string | null;
 }
 
+// Reserved domains that cannot be configured
+const RESERVED_DOMAINS = [
+  'lovable.app',
+  'lovable.dev',
+  'netlify.app',
+  'netlify.com',
+  'supabase.co',
+  'supabase.com',
+  'autodox.netlify.app',
+  'agents-institute.com',
+  'vercel.app',
+  'herokuapp.com',
+  'cloudflare.com',
+];
+
 function generateVerificationToken(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let token = 'adx_';
@@ -23,9 +38,19 @@ function generateVerificationToken(): string {
   return token;
 }
 
+function isReservedDomain(domainName: string): boolean {
+  const lower = domainName.toLowerCase();
+  return RESERVED_DOMAINS.some(
+    reserved => lower === reserved || lower.endsWith(`.${reserved}`)
+  );
+}
+
 export function useBrandDomain(brandId: string | undefined) {
   const [loading, setLoading] = useState(false);
   const [domainState, setDomainState] = useState<BrandDomainState | null>(null);
+  const [lastVerifyAttempt, setLastVerifyAttempt] = useState<Date | null>(null);
+
+  const VERIFY_COOLDOWN_MS = 30000; // 30 seconds
 
   const fetchDomainState = useCallback(async () => {
     if (!brandId) return null;
@@ -58,13 +83,43 @@ export function useBrandDomain(brandId: string | undefined) {
       return false;
     }
 
+    const normalizedDomain = domainName.toLowerCase();
+
+    // Check for reserved domains
+    if (isReservedDomain(normalizedDomain)) {
+      toast.error('This domain is reserved and cannot be used');
+      setLoading(false);
+      return false;
+    }
+
+    // Check for duplicate domains (client-side check before hitting unique constraint)
+    const { data: existingBrand, error: checkError } = await supabase
+      .from('brands')
+      .select('id, name')
+      .eq('domain', normalizedDomain)
+      .neq('id', brandId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking domain uniqueness:', checkError);
+      toast.error('Failed to validate domain availability');
+      setLoading(false);
+      return false;
+    }
+
+    if (existingBrand) {
+      toast.error(`This domain is already assigned to another brand: ${existingBrand.name}`);
+      setLoading(false);
+      return false;
+    }
+
     // Generate verification token
     const verificationToken = generateVerificationToken();
 
     const { error } = await supabase
       .from('brands')
       .update({
-        domain: domainName.toLowerCase(),
+        domain: normalizedDomain,
         domain_status: 'pending',
         domain_verification_token: verificationToken,
         domain_verified_at: null,
@@ -77,7 +132,12 @@ export function useBrandDomain(brandId: string | undefined) {
     setLoading(false);
 
     if (error) {
-      toast.error(`Failed to set domain: ${error.message}`);
+      // Handle unique constraint violation
+      if (error.code === '23505') {
+        toast.error('This domain is already in use by another brand');
+      } else {
+        toast.error(`Failed to set domain: ${error.message}`);
+      }
       return false;
     }
 
@@ -86,10 +146,29 @@ export function useBrandDomain(brandId: string | undefined) {
     return true;
   };
 
+  const canVerify = useCallback(() => {
+    if (!lastVerifyAttempt) return true;
+    return (Date.now() - lastVerifyAttempt.getTime()) > VERIFY_COOLDOWN_MS;
+  }, [lastVerifyAttempt]);
+
+  const getCooldownRemaining = useCallback(() => {
+    if (!lastVerifyAttempt) return 0;
+    const elapsed = Date.now() - lastVerifyAttempt.getTime();
+    return Math.max(0, Math.ceil((VERIFY_COOLDOWN_MS - elapsed) / 1000));
+  }, [lastVerifyAttempt]);
+
   const verifyDomain = async (): Promise<boolean> => {
     if (!brandId) return false;
+
+    // Rate limiting check
+    if (!canVerify()) {
+      const remaining = getCooldownRemaining();
+      toast.error(`Please wait ${remaining} seconds before verifying again`);
+      return false;
+    }
     
     setLoading(true);
+    setLastVerifyAttempt(new Date());
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -200,29 +279,41 @@ export function useBrandDomain(brandId: string | undefined) {
     
     setLoading(true);
 
-    const { error } = await supabase
-      .from('brands')
-      .update({
-        domain: null,
-        domain_status: null,
-        domain_verification_token: null,
-        domain_verified_at: null,
-        ssl_status: null,
-        domain_error: null,
-        cloudflare_hostname_id: null,
-      })
-      .eq('id', brandId);
+    try {
+      // Call edge function to remove from Netlify and clear database
+      const response = await supabase.functions.invoke('remove-domain-from-netlify', {
+        body: { brand_id: brandId },
+      });
 
-    setLoading(false);
+      if (response.error) {
+        toast.error(`Failed to remove domain: ${response.error.message}`);
+        setLoading(false);
+        return false;
+      }
 
-    if (error) {
-      toast.error(`Failed to remove domain: ${error.message}`);
+      const result = response.data;
+
+      if (result.success) {
+        if (result.netlify_error) {
+          // Domain removed from DB but Netlify had issues
+          toast.warning(`Domain removed, but Netlify cleanup had issues: ${result.netlify_error}`);
+        } else {
+          toast.success('Domain removed successfully');
+        }
+        setDomainState(null);
+        setLoading(false);
+        return true;
+      } else {
+        toast.error(result.error || 'Failed to remove domain');
+        setLoading(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Remove domain error:', error);
+      toast.error('Failed to remove domain');
+      setLoading(false);
       return false;
     }
-
-    toast.success('Domain removed');
-    setDomainState(null);
-    return true;
   };
 
   return {
@@ -234,5 +325,8 @@ export function useBrandDomain(brandId: string | undefined) {
     provisionSSL,
     checkStatus,
     removeDomain,
+    canVerify,
+    getCooldownRemaining,
+    lastVerifyAttempt,
   };
 }
