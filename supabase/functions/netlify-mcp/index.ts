@@ -301,6 +301,92 @@ mcp.tool("get_site_info", {
   },
 });
 
+// Tool: Get DNS requirements for a domain
+mcp.tool("get_dns_requirements", {
+  description: "Get required DNS records for adding a custom domain to the Netlify site",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      domain: {
+        type: "string" as const,
+        description: "The domain name to get DNS requirements for (e.g., example.com or app.example.com)",
+      },
+      verification_token: {
+        type: "string" as const,
+        description: "Optional verification token to include in TXT record requirements",
+      },
+    },
+    required: ["domain"] as const,
+  },
+  handler: async (args: { domain: string; verification_token?: string }) => {
+    try {
+      // Fetch site info to get actual subdomain
+      const site = await netlifyFetch(`/sites/${NETLIFY_SITE_ID}`);
+      const siteSubdomain = `${site.name}.netlify.app`;
+      const loadBalancerIP = "75.2.60.5"; // Netlify's standard load balancer
+
+      // Determine if apex or subdomain
+      const isApex = isApexDomainCheck(args.domain);
+
+      const dnsRecords = {
+        routing: isApex
+          ? { type: "A", name: "@", value: loadBalancerIP }
+          : { type: "CNAME", name: getSubdomainPart(args.domain), value: siteSubdomain },
+        verification: args.verification_token
+          ? { type: "TXT", name: "_autodox-verify", value: args.verification_token }
+          : null,
+      };
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            success: true,
+            domain: args.domain,
+            is_apex: isApex,
+            site_subdomain: siteSubdomain,
+            load_balancer_ip: loadBalancerIP,
+            dns_records: dnsRecords,
+          }, null, 2),
+        }],
+      };
+    } catch (error: any) {
+      return {
+        content: [{ type: "text" as const, text: `Error: ${error.message}` }],
+        isError: true,
+      };
+    }
+  },
+});
+
+// Helper functions for domain detection
+const MULTI_LEVEL_TLDS = [
+  'co.uk', 'org.uk', 'com.au', 'net.au', 'co.nz', 'co.jp', 'com.br',
+  'co.in', 'com.cn', 'co.za', 'com.mx', 'co.kr', 'com.sg', 'com.hk',
+];
+
+function isApexDomainCheck(domain: string): boolean {
+  const lower = domain.toLowerCase();
+  for (const tld of MULTI_LEVEL_TLDS) {
+    if (lower.endsWith(`.${tld}`)) {
+      const withoutTld = lower.slice(0, -(tld.length + 1));
+      return !withoutTld.includes('.');
+    }
+  }
+  return domain.split('.').length === 2;
+}
+
+function getSubdomainPart(domain: string): string {
+  const lower = domain.toLowerCase();
+  for (const tld of MULTI_LEVEL_TLDS) {
+    if (lower.endsWith(`.${tld}`)) {
+      const withoutTld = lower.slice(0, -(tld.length + 1));
+      return withoutTld.split('.')[0];
+    }
+  }
+  return domain.split('.')[0];
+}
+
 // Bind to HTTP transport
 const transport = new StreamableHttpTransport();
 const httpHandler = transport.bind(mcp);

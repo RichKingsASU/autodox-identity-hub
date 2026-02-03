@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.remove-domain-from-netlify]
 verify_jwt = false
+
+[functions.get-dns-requirements]
+verify_jwt = false

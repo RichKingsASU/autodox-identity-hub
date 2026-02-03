@@ -5,58 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useBrandDomain, type DomainStatus } from "@/hooks/useBrandDomain";
+import { useDNSRequirements } from "@/hooks/useDNSRequirements";
 import { toast } from "sonner";
-
-// List of known multi-level TLDs for proper apex domain detection
-const MULTI_LEVEL_TLDS = [
-  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'net.uk', 'ltd.uk', 'plc.uk',
-  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'asn.au', 'id.au',
-  'co.nz', 'org.nz', 'net.nz', 'govt.nz', 'ac.nz', 'school.nz',
-  'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp', 'ed.jp',
-  'com.br', 'org.br', 'net.br', 'gov.br', 'edu.br',
-  'co.in', 'net.in', 'org.in', 'gen.in', 'firm.in', 'ind.in',
-  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn',
-  'co.za', 'org.za', 'net.za', 'gov.za', 'edu.za',
-  'com.mx', 'org.mx', 'net.mx', 'gob.mx', 'edu.mx',
-  'co.kr', 'or.kr', 'ne.kr', 'go.kr', 'ac.kr',
-  'com.sg', 'net.sg', 'org.sg', 'gov.sg', 'edu.sg',
-  'com.hk', 'net.hk', 'org.hk', 'gov.hk', 'edu.hk',
-  'co.th', 'or.th', 'net.th', 'go.th', 'ac.th',
-  'com.my', 'net.my', 'org.my', 'gov.my', 'edu.my',
-  'co.id', 'or.id', 'net.id', 'go.id', 'ac.id',
-  'com.tw', 'net.tw', 'org.tw', 'gov.tw', 'edu.tw',
-  'com.ph', 'net.ph', 'org.ph', 'gov.ph', 'edu.ph',
-  'com.vn', 'net.vn', 'org.vn', 'gov.vn', 'edu.vn',
-  'co.il', 'org.il', 'net.il', 'gov.il', 'ac.il',
-  'com.pl', 'net.pl', 'org.pl', 'gov.pl', 'edu.pl',
-  'co.nl', 'com.nl', 'net.nl', 'org.nl',
-  'com.ar', 'net.ar', 'org.ar', 'gob.ar', 'edu.ar',
-  'com.co', 'net.co', 'org.co', 'gov.co', 'edu.co',
-  'com.pe', 'net.pe', 'org.pe', 'gob.pe', 'edu.pe',
-];
-
-/**
- * Determines if a domain is an apex domain (root domain without subdomain)
- * Correctly handles multi-level TLDs like .co.uk, .com.au, etc.
- */
-const isApexDomain = (domain: string): boolean => {
-  const lower = domain.toLowerCase();
-  
-  // Check against known multi-level TLDs
-  for (const tld of MULTI_LEVEL_TLDS) {
-    if (lower.endsWith(`.${tld}`)) {
-      // e.g., "example.co.uk" → "example"
-      const withoutTld = lower.slice(0, -(tld.length + 1));
-      // If there's no more dots, it's an apex domain
-      return !withoutTld.includes('.');
-    }
-  }
-  
-  // Standard TLD check (e.g., example.com, example.io)
-  const parts = domain.split('.');
-  return parts.length === 2;
-};
 
 interface BrandDomainTabProps {
   brandId: string;
@@ -79,6 +31,15 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
     canVerify,
     getCooldownRemaining 
   } = useBrandDomain(brandId);
+
+  // Fetch DNS requirements dynamically from Netlify API
+  const { 
+    dnsConfig, 
+    loading: dnsLoading 
+  } = useDNSRequirements(
+    domainState?.domain || null, 
+    domainState?.domain_verification_token || null
+  );
 
   useEffect(() => {
     fetchDomainState();
@@ -257,7 +218,7 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
               <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
                 <span className="text-muted-foreground">Name:</span>
                 <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">
-                  _autodox-verify
+                  {dnsConfig?.dns_records.verification?.name || "_autodox-verify"}
                 </code>
               </div>
               <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
@@ -268,36 +229,54 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
               </div>
             </div>
 
-            {/* A Record or CNAME */}
-            <div className="p-3 bg-muted rounded-md space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  {isApexDomain(domainState.domain!) ? "A Record" : "CNAME Record"}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyToClipboard(isApexDomain(domainState.domain!) ? "75.2.60.5" : "autodox.netlify.app")}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+            {/* A Record or CNAME - dynamically fetched */}
+            {dnsLoading ? (
+              <div className="p-3 bg-muted rounded-md space-y-2">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-4 w-36" />
               </div>
-              <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
-                <span className="text-muted-foreground">Name:</span>
-                <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">
-                  {isApexDomain(domainState.domain!) ? "@" : domainState.domain!.split(".")[0]}
-                </code>
+            ) : (
+              <div className="p-3 bg-muted rounded-md space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    {dnsConfig?.dns_records.routing.type === "A" ? "A Record" : "CNAME Record"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(dnsConfig?.dns_records.routing.value || "")}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
+                  <span className="text-muted-foreground">Name:</span>
+                  <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">
+                    {dnsConfig?.dns_records.routing.name || "@"}
+                  </code>
+                </div>
+                <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
+                  <span className="text-muted-foreground">Value:</span>
+                  <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">
+                    {dnsConfig?.dns_records.routing.value || "Loading..."}
+                  </code>
+                </div>
+                {dnsConfig?.dns_records.routing.description && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {dnsConfig.dns_records.routing.description}
+                  </p>
+                )}
               </div>
-              <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
-                <span className="text-muted-foreground">Value:</span>
-                <code className="bg-secondary px-1.5 py-0.5 rounded text-xs">
-                  {isApexDomain(domainState.domain!) ? "75.2.60.5" : "autodox.netlify.app"}
-                </code>
-              </div>
-            </div>
+            )}
 
             <p className="text-xs text-muted-foreground">
               DNS changes can take 5-10 minutes to propagate. Click "Verify DNS" after adding the records.
+              {dnsConfig?.source === "fallback" && (
+                <span className="block mt-1 text-amber-600">
+                  Note: Using cached DNS configuration.
+                </span>
+              )}
             </p>
           </div>
         </div>
