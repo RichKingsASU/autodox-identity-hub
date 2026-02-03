@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.netlify-mcp]
 verify_jwt = false
+
+[functions.netlify-health-check]
+verify_jwt = false

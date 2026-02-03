@@ -23,22 +23,12 @@ export function NetlifyConnectionStatus() {
     setStatus(prev => ({ ...prev, checking: true }));
     
     try {
-      // Call the check-domain-status function with a dummy brandId
-      // The function will return different responses based on whether Netlify is configured
-      const response = await supabase.functions.invoke('check-domain-status', {
-        body: { brandId: '00000000-0000-0000-0000-000000000000' },
-      });
+      const response = await supabase.functions.invoke('netlify-health-check');
 
-      // If we get a 404 (brand not found) but no error about Netlify,
-      // it means Netlify is configured. If the edge function is working
-      // with Netlify credentials, connection is established.
-      // We infer connection status from whether the error mentions Netlify
-      const isConnected = !response.error?.message?.includes('Netlify') && 
-                          !response.data?.error?.includes('Netlify');
-      
       setStatus({
-        connected: isConnected,
+        connected: response.data?.connected ?? false,
         checking: false,
+        error: response.data?.reason,
       });
     } catch (err) {
       setStatus({
