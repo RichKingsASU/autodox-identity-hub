@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.netlify-health-check]
 verify_jwt = false
+
+[functions.remove-domain-from-netlify]
+verify_jwt = false

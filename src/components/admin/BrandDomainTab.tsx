@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Globe, Copy, CheckCircle2, AlertCircle, Loader2, Trash2, RefreshCw, ExternalLink } from "lucide-react";
+import { Globe, Copy, CheckCircle2, AlertCircle, Loader2, Trash2, RefreshCw, ExternalLink, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,56 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useBrandDomain, type DomainStatus } from "@/hooks/useBrandDomain";
 import { toast } from "sonner";
+
+// List of known multi-level TLDs for proper apex domain detection
+const MULTI_LEVEL_TLDS = [
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'net.uk', 'ltd.uk', 'plc.uk',
+  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'asn.au', 'id.au',
+  'co.nz', 'org.nz', 'net.nz', 'govt.nz', 'ac.nz', 'school.nz',
+  'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp', 'ed.jp',
+  'com.br', 'org.br', 'net.br', 'gov.br', 'edu.br',
+  'co.in', 'net.in', 'org.in', 'gen.in', 'firm.in', 'ind.in',
+  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn',
+  'co.za', 'org.za', 'net.za', 'gov.za', 'edu.za',
+  'com.mx', 'org.mx', 'net.mx', 'gob.mx', 'edu.mx',
+  'co.kr', 'or.kr', 'ne.kr', 'go.kr', 'ac.kr',
+  'com.sg', 'net.sg', 'org.sg', 'gov.sg', 'edu.sg',
+  'com.hk', 'net.hk', 'org.hk', 'gov.hk', 'edu.hk',
+  'co.th', 'or.th', 'net.th', 'go.th', 'ac.th',
+  'com.my', 'net.my', 'org.my', 'gov.my', 'edu.my',
+  'co.id', 'or.id', 'net.id', 'go.id', 'ac.id',
+  'com.tw', 'net.tw', 'org.tw', 'gov.tw', 'edu.tw',
+  'com.ph', 'net.ph', 'org.ph', 'gov.ph', 'edu.ph',
+  'com.vn', 'net.vn', 'org.vn', 'gov.vn', 'edu.vn',
+  'co.il', 'org.il', 'net.il', 'gov.il', 'ac.il',
+  'com.pl', 'net.pl', 'org.pl', 'gov.pl', 'edu.pl',
+  'co.nl', 'com.nl', 'net.nl', 'org.nl',
+  'com.ar', 'net.ar', 'org.ar', 'gob.ar', 'edu.ar',
+  'com.co', 'net.co', 'org.co', 'gov.co', 'edu.co',
+  'com.pe', 'net.pe', 'org.pe', 'gob.pe', 'edu.pe',
+];
+
+/**
+ * Determines if a domain is an apex domain (root domain without subdomain)
+ * Correctly handles multi-level TLDs like .co.uk, .com.au, etc.
+ */
+const isApexDomain = (domain: string): boolean => {
+  const lower = domain.toLowerCase();
+  
+  // Check against known multi-level TLDs
+  for (const tld of MULTI_LEVEL_TLDS) {
+    if (lower.endsWith(`.${tld}`)) {
+      // e.g., "example.co.uk" → "example"
+      const withoutTld = lower.slice(0, -(tld.length + 1));
+      // If there's no more dots, it's an apex domain
+      return !withoutTld.includes('.');
+    }
+  }
+  
+  // Standard TLD check (e.g., example.com, example.io)
+  const parts = domain.split('.');
+  return parts.length === 2;
+};
 
 interface BrandDomainTabProps {
   brandId: string;
@@ -16,11 +66,32 @@ interface BrandDomainTabProps {
 
 export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: BrandDomainTabProps) {
   const [domainInput, setDomainInput] = useState(initialDomain || "");
-  const { loading, domainState, fetchDomainState, setDomain, verifyDomain, provisionSSL, checkStatus, removeDomain } = useBrandDomain(brandId);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const { 
+    loading, 
+    domainState, 
+    fetchDomainState, 
+    setDomain, 
+    verifyDomain, 
+    provisionSSL, 
+    checkStatus, 
+    removeDomain,
+    canVerify,
+    getCooldownRemaining 
+  } = useBrandDomain(brandId);
 
   useEffect(() => {
     fetchDomainState();
   }, [fetchDomainState]);
+
+  // Cooldown countdown timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const remaining = getCooldownRemaining();
+      setCooldownSeconds(remaining);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [getCooldownRemaining]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -55,6 +126,10 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
   };
 
   const handleVerifyDNS = async () => {
+    if (!canVerify()) {
+      toast.error(`Please wait ${cooldownSeconds} seconds before verifying again`);
+      return;
+    }
     const success = await verifyDomain();
     if (success) {
       onDomainChange?.();
@@ -69,7 +144,7 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
   };
 
   const handleRemoveDomain = async () => {
-    if (!confirm("Are you sure you want to remove this domain?")) return;
+    if (!confirm("Are you sure you want to remove this domain? This will also remove it from our servers.")) return;
     const success = await removeDomain();
     if (success) {
       setDomainInput("");
@@ -77,13 +152,9 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
     }
   };
 
-  const isApexDomain = (domain: string) => {
-    const parts = domain.split(".");
-    return parts.length === 2;
-  };
-
   const hasDomain = domainState?.domain;
   const showDNSInstructions = hasDomain && domainState.domain_status && ["pending", "verifying", "failed"].includes(domainState.domain_status);
+  const isVerifyDisabled = loading || !canVerify();
 
   return (
     <div className="space-y-6">
@@ -122,6 +193,20 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
             </Alert>
           )}
         </div>
+      )}
+
+      {/* SSL Provisioning Status Message */}
+      {domainState?.domain_status === "provisioning_ssl" && (
+        <Alert>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertDescription>
+            SSL certificate is being provisioned. This typically takes 2-5 minutes.
+            <br />
+            <span className="text-xs text-muted-foreground">
+              You can close this page - SSL will continue provisioning in the background.
+            </span>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Domain Input */}
@@ -222,13 +307,15 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
       {hasDomain && (
         <div className="flex flex-wrap gap-2">
           {["pending", "verifying", "failed"].includes(domainState.domain_status || "") && (
-            <Button onClick={handleVerifyDNS} disabled={loading} variant="default">
+            <Button onClick={handleVerifyDNS} disabled={isVerifyDisabled} variant="default">
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : cooldownSeconds > 0 ? (
+                <Clock className="h-4 w-4 mr-2" />
               ) : (
                 <RefreshCw className="h-4 w-4 mr-2" />
               )}
-              Verify DNS
+              {cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s` : "Verify DNS"}
             </Button>
           )}
 
