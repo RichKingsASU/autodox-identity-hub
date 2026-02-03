@@ -1,45 +1,46 @@
-# Domain Management Hardening - COMPLETED ✅
 
-## Implementation Status
+# Bug Fix: Domain Whitespace Trimming
 
-All 6 recommendations have been implemented:
+## Problem Discovered
+During uniqueness testing, a domain with a leading space (` retropawnshop.com`) bypassed the uniqueness validation because it's technically different from `retropawnshop.com`. This is a validation gap.
 
-### 1. ✅ Netlify Domain Cleanup on Removal
-- Created `supabase/functions/remove-domain-from-netlify/index.ts`
-- Calls Netlify API to delete domain before clearing database
-- Graceful error handling if domain doesn't exist in Netlify
+## Data Issues Found
+| Brand | Issue |
+|-------|-------|
+| retropawnshop | Slug is `http://retropawnshop.com/` instead of `retropawnshop` |
+| Test Brand | Domain has leading space: ` retropawnshop.com` |
 
-### 2. ✅ Domain Uniqueness Validation  
-- Added `UNIQUE INDEX brands_domain_unique ON brands(domain) WHERE domain IS NOT NULL`
-- Client-side duplicate check in `setDomain()` before saving
-- Handles unique constraint violation errors gracefully
+## Implementation Plan
 
-### 3. ✅ Fix Apex Domain Detection for ccTLDs
-- Updated `isApexDomain()` in `BrandDomainTab.tsx`
-- Added comprehensive `MULTI_LEVEL_TLDS` list (50+ entries)
-- Correctly identifies apex domains for `.co.uk`, `.com.au`, etc.
+### 1. Fix Domain Validation (Code Change)
+**File:** `src/hooks/useBrandDomain.ts`
 
-### 4. ✅ Reserved Domain Validation
-- Added `RESERVED_DOMAINS` list in `useBrandDomain.ts`
-- Blocks platform-owned domains (lovable.app, netlify.app, etc.)
-- Validation runs before database operations
+Add `.trim()` to domain input before all validation checks:
+- In `setDomain()` function, trim the domain value immediately
+- This ensures whitespace can't bypass uniqueness or reserved domain checks
 
-### 5. ✅ DNS Verification Rate Limiting
-- 30-second cooldown between verification attempts
-- Added `canVerify()` and `getCooldownRemaining()` to hook
-- UI shows countdown timer on Verify DNS button
+### 2. Fix Existing Data (Database)
+Clean up the test data:
+```sql
+-- Fix retropawnshop's malformed slug
+UPDATE brands SET slug = 'retropawnshop' WHERE id = 'd2544f02-2fef-4cf8-af2a-f4e1d9c5a15e';
 
-### 6. ✅ SSL Provisioning Timeout Handling
-- Added informative Alert during `provisioning_ssl` status
-- Shows expected time (2-5 minutes)
-- Informs user they can close the page
+-- Trim Test Brand's domain (or clear it for re-testing)
+UPDATE brands SET domain = NULL WHERE id = '422db4c0-af20-467d-ad67-20d2032e810d';
+```
 
-## Files Changed
+### 3. Add Trim to Create/Edit Modals
+**Files:** `src/components/admin/CreateBrandModal.tsx`, `src/components/admin/EditBrandModal.tsx`
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/remove-domain-from-netlify/index.ts` | NEW - Edge function for Netlify cleanup |
-| `supabase/config.toml` | Added function config with `verify_jwt = false` |
-| `src/hooks/useBrandDomain.ts` | Reserved domains, duplicate check, rate limiting, Netlify cleanup call |
-| `src/components/admin/BrandDomainTab.tsx` | Fixed apex detection, cooldown UI, SSL messaging |
-| Database | `brands_domain_unique` partial unique index |
+Ensure domain is trimmed before submission to catch issues at the UI level.
+
+## After Fix: Re-test Uniqueness
+1. Clear Test Brand's domain
+2. Try setting it to `retropawnshop.com` (no spaces)
+3. Should now correctly show "Domain already in use" error
+
+## Technical Details
+The fix involves adding `.trim()` calls in 3 locations:
+- `useBrandDomain.ts` - `setDomain()` function
+- `CreateBrandModal.tsx` - form submission handler  
+- `EditBrandModal.tsx` - form submission handler
