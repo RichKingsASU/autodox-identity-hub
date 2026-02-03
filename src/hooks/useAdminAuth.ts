@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -20,6 +20,7 @@ export function useAdminAuth() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const initializedRef = useRef(false);
 
   // Reusable function to fetch user roles
   const fetchUserRoles = useCallback(async (userId: string): Promise<AppRole[]> => {
@@ -61,6 +62,12 @@ export function useAdminAuth() {
       async (event, session) => {
         if (!isMounted) return;
 
+        // CRITICAL: Set loading to true immediately when auth state changes
+        // This prevents premature redirects before roles are fetched
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          setLoading(true);
+        }
+
         setUser(session?.user ?? null);
 
         if (session?.user) {
@@ -76,8 +83,11 @@ export function useAdminAuth() {
       }
     );
 
-    // Initial session check - fetch roles before setting loading to false
+    // Initial session check - only run once
     const initializeAuth = async () => {
+      if (initializedRef.current) return;
+      initializedRef.current = true;
+
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!isMounted) return;
