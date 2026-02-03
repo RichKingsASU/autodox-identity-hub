@@ -1,156 +1,183 @@
 
-# Domain Deployment Walkthrough
+# Fix Password Reset Flow
 
-## Overview
-Step-by-step guide to add brands and deploy domains for **never-forget-occasions.com** and **retropawnshop.com** using the Admin Panel's domain management system.
+## Problem Summary
 
-## Current State
+The password reset flow fails after the user clicks the email link and submits a new password. While auth logs show the password update succeeds (PUT `/user` returns 200), subsequent login attempts fail. The root causes are:
 
-| Domain | Status | Notes |
-|--------|--------|-------|
-| retropawnshop.com | Exists - Pending DNS | Already has brand, needs DNS verification |
-| never-forget-occasions.com | Not Created | Needs new brand creation |
+1. Missing error handling around async operations
+2. Race condition between hash fragment processing and session detection
+3. No recovery token extraction from URL
+4. Silent failures when exceptions occur
 
-## Domain Lifecycle Flow
+## Architecture Issues
 
 ```text
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌────────────────┐    ┌─────────────┐
-│  Create     │───▶│  Set Domain │───▶│  Add DNS    │───▶│  Verify DNS    │───▶│  SSL Active │
-│  Brand      │    │  + Token    │    │  Records    │    │  + Provision   │    │  ✓ Live     │
-└─────────────┘    └─────────────┘    └─────────────┘    └────────────────┘    └─────────────┘
-      UI               UI                External            Edge Functions        Automatic
+Current Flow (Broken):
+┌─────────────┐     ┌─────────────────┐     ┌────────────────┐
+│ Click Email │────▶│ /reset-password │────▶│ Check Session  │──▶ May show "Invalid"
+│    Link     │     │   #token=xxx    │     │  (race cond.)  │    before token processed
+└─────────────┘     └─────────────────┘     └────────────────┘
+
+Fixed Flow:
+┌─────────────┐     ┌─────────────────┐     ┌────────────────┐     ┌───────────────┐
+│ Click Email │────▶│ /reset-password │────▶│ Wait for Hash  │────▶│ Verify Session│
+│    Link     │     │   #token=xxx    │     │  Processing    │     │   + Update PW │
+└─────────────┘     └─────────────────┘     └────────────────┘     └───────────────┘
 ```
 
-## Part 1: never-forget-occasions.com (New Brand)
+## Implementation Plan
 
-### Step 1: Create Brand
-1. Navigate to `/admin/brands`
-2. Click **"New Brand"** button
-3. Fill in brand details:
-   - **Brand Name**: Never Forget Occasions
-   - **URL Slug**: never-forget-occasions (auto-generated)
-   - Click **Continue**
-4. On step 2:
-   - **Custom Domain**: never-forget-occasions.com
-   - **Monthly SMS Limit**: 10000 (default)
-   - Click **Create Brand**
+### Step 1: Fix ResetPassword.tsx Session Handling
 
-### Step 2: Get DNS Requirements
-After creation, the system will:
-- Generate a verification token (format: `adx_xxxxxxxxxxxxxxxxxxxxxxxxxx`)
-- Fetch DNS requirements from Netlify API
-- Display required DNS records
+**Issue**: Race condition between Supabase processing the URL hash and the component checking for session
 
-**Required DNS Records for never-forget-occasions.com (Apex Domain):**
+**Solution**: 
+- Add explicit detection of URL hash containing recovery tokens
+- Wait for Supabase to process the hash before checking session
+- Add proper timeout for hash processing
+- Improve PASSWORD_RECOVERY event handling
 
-| Type | Name | Value | Purpose |
-|------|------|-------|---------|
-| TXT | _autodox-verify | `adx_[generated_token]` | Domain ownership verification |
-| A | @ | 75.2.60.5 | Route traffic to Netlify |
+### Step 2: Add Try-Catch Error Handling
 
-### Step 3: Configure DNS at Registrar
-At your domain registrar (GoDaddy, Namecheap, Cloudflare, etc.):
-1. Add TXT record for verification
-2. Add A record pointing to Netlify load balancer
-3. Wait 5-10 minutes for DNS propagation
+**Issue**: Async errors in `handleSubmit` aren't caught, leading to silent failures
 
-### Step 4: Verify and Provision SSL
-1. Click **"Verify DNS"** button in the Domain tab
-2. If successful, SSL provisioning starts automatically
-3. Domain status progresses: `pending` → `verifying` → `verified` → `provisioning_ssl` → `active`
+**Solution**:
+- Wrap `updatePassword` call in try-catch block
+- Display appropriate error messages for all failure modes
+- Add logging for debugging
 
-## Part 2: retropawnshop.com (Existing Brand - Pending)
+### Step 3: Add Global Unhandled Rejection Handler
 
-### Current State
-- **Brand ID**: d2544f02-2fef-4cf8-af2a-f4e1d9c5a15e
-- **Status**: pending
-- **Verification Token**: `adx_jfmxparnnpv2f7k45e7zwonktx8qil0j`
+**Issue**: Unhandled promise rejections can crash the app
 
-### Step 1: Get Current DNS Requirements
-Navigate to `/admin/brands` → Click retropawnshop → Domain tab
+**Solution**:
+- Add `unhandledrejection` event listener in App.tsx
+- Show toast for uncaught errors
+- Prevent default crash behavior
 
-**Required DNS Records for retropawnshop.com (Apex Domain):**
+### Step 4: Improve useAuth updatePassword Function
 
-| Type | Name | Value | Purpose |
-|------|------|-------|---------|
-| TXT | _autodox-verify | `adx_jfmxparnnpv2f7k45e7zwonktx8qil0j` | Domain ownership verification |
-| A | @ | 75.2.60.5 | Route traffic to Netlify |
+**Issue**: No validation or session verification before password update
 
-### Step 2: Add DNS Records at Registrar
-1. Log into retropawnshop.com's DNS provider
-2. Add TXT record: `_autodox-verify.retropawnshop.com` → `adx_jfmxparnnpv2f7k45e7zwonktx8qil0j`
-3. Add A record: `@` (or `retropawnshop.com`) → `75.2.60.5`
+**Solution**:
+- Verify session exists before attempting update
+- Return more detailed error information
+- Handle edge cases (expired session, etc.)
 
-### Step 3: Verify DNS
-1. Wait for DNS propagation (5-10 minutes typically)
-2. Click **"Verify DNS"** button
-3. System calls `verify-domain` edge function:
-   - Queries Cloudflare DNS-over-HTTPS for TXT record
-   - Validates token matches
-   - Updates status to `verified`
+## Files to Modify
 
-### Step 4: SSL Provisioning
-Upon verification success:
-1. System automatically triggers `add-domain-to-netlify` edge function
-2. Netlify adds domain to site and provisions SSL certificate
-3. Status updates to `provisioning_ssl` → `active` (typically 2-5 minutes)
+| File | Changes |
+|------|---------|
+| `src/pages/ResetPassword.tsx` | Fix session detection, add try-catch, handle URL hash |
+| `src/hooks/useAuth.ts` | Add session validation to updatePassword |
+| `src/App.tsx` | Add global unhandled rejection handler |
 
-## Edge Functions Involved
+## Technical Details
 
-| Function | Purpose | Trigger |
-|----------|---------|---------|
-| `get-dns-requirements` | Fetch dynamic DNS config from Netlify API | On domain tab load |
-| `verify-domain` | Check TXT record via Cloudflare DNS-over-HTTPS | "Verify DNS" button |
-| `add-domain-to-netlify` | Add domain to Netlify site, provision SSL | After verification |
-| `check-domain-status` | Poll SSL status from Netlify | "Check SSL Status" button |
-| `remove-domain-from-netlify` | Remove domain from Netlify and clear DB | "Remove Domain" button |
+### ResetPassword.tsx Changes
 
-## Testing the Full Flow
+```typescript
+// 1. Add hash detection on mount
+useEffect(() => {
+  const hash = window.location.hash;
+  const hasRecoveryToken = hash.includes('type=recovery') || 
+                           hash.includes('access_token');
+  
+  if (hasRecoveryToken) {
+    // Supabase client will process this automatically
+    // Just wait for the auth state change
+    setIsValidSession(true);
+  }
+}, []);
 
-### Via Admin UI
-1. Create never-forget-occasions brand at `/admin/brands`
-2. Navigate to brand → Domain tab
-3. Observe DNS Sync Indicator shows "Live API" source
-4. Follow DNS setup instructions
-5. Click Verify DNS after adding records
-6. Monitor status progression to Active
+// 2. Wrap submit in try-catch
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+  setErrors({});
 
-### Via Database (Verification)
-```sql
-SELECT id, name, domain, domain_status, ssl_status, domain_verification_token 
-FROM brands 
-WHERE domain IN ('never-forget-occasions.com', 'retropawnshop.com');
+  try {
+    // ... validation
+    
+    const { error } = await updatePassword(formData.password);
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
+        description: error.message,
+      });
+      return;
+    }
+
+    setIsSuccess(true);
+    toast({
+      title: "Password updated!",
+      description: "Your password has been successfully reset.",
+    });
+  } catch (error) {
+    console.error("Password update error:", error);
+    toast({
+      variant: "destructive",
+      title: "An unexpected error occurred",
+      description: "Please try again or request a new reset link.",
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 ```
 
-## Status Meanings
+### App.tsx Global Error Handler
 
-| Status | Description | Next Action |
-|--------|-------------|-------------|
-| `pending` | Domain configured, awaiting DNS records | Add DNS records, then Verify |
-| `verifying` | DNS check in progress | Wait for result |
-| `verified` | TXT record validated | SSL provisioning auto-starts |
-| `provisioning_ssl` | SSL certificate being issued | Wait 2-5 minutes |
-| `active` | Domain fully operational | Visit site |
-| `failed` | Error occurred | Check error message, retry |
+```typescript
+useEffect(() => {
+  const handleRejection = (event: PromiseRejectionEvent) => {
+    console.error("Unhandled rejection:", event.reason);
+    toast.error("An error occurred. Please try again.");
+    event.preventDefault();
+  };
 
-## Integration Status Monitoring
+  window.addEventListener("unhandledrejection", handleRejection);
+  return () => window.removeEventListener("unhandledrejection", handleRejection);
+}, []);
+```
 
-The Admin Panel shows:
-- **Compact Status Indicator** in sidebar header (3 dots for Netlify/Resend/DB)
-- **DNS Sync Indicator** in Domain tab showing API source
-- **Integration Status Panel** on Overview and Settings pages
+### useAuth.ts Improvement
 
-## Troubleshooting
+```typescript
+const updatePassword = async (newPassword: string) => {
+  // Verify we have an active session
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    return { error: new Error("No active session. Please use the reset link from your email.") };
+  }
 
-### DNS Not Verifying
-- Verify TXT record is exactly `_autodox-verify` (not `_autodox-verify.yourdomain.com` at some registrars)
-- Use [DNS Checker](https://dnschecker.org) to verify propagation
-- Wait 30 seconds between verification attempts (rate limited)
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+  
+  return { error };
+};
+```
 
-### SSL Not Provisioning
-- Ensure A record points to `75.2.60.5`
-- Check Netlify credentials are configured (`NETLIFY_ACCESS_TOKEN`, `NETLIFY_SITE_ID`)
-- View error in Domain tab if failed
+## Testing Plan
 
-### Fallback Mode
-If DNS Sync Indicator shows "Cached", the Netlify API is temporarily unavailable but system continues with fallback values.
+After implementation:
+1. Request password reset from login modal
+2. Click link in email
+3. Verify reset form appears (not "Invalid Link" message)
+4. Enter new password and submit
+5. Verify success message appears
+6. Sign in with new password
+7. Verify login succeeds
+
+## Edge Cases to Handle
+
+- User clicks same reset link twice (token consumed)
+- User has multiple reset emails and clicks old one
+- Session expires while user is typing new password
+- Network error during password update
+- User navigates away and back to reset page
