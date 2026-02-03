@@ -169,12 +169,20 @@ export function useAuth() {
   };
 
   const resetPassword = async (email: string) => {
-    // Trigger Supabase's password reset - this sends the email with the actual recovery link
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+    // Use custom edge function to send password reset via Resend (bypasses Supabase rate limits)
+    const { data, error } = await supabase.functions.invoke("request-password-reset", {
+      body: { email },
     });
 
-    return { error };
+    if (error) {
+      return { error };
+    }
+
+    if (data?.error) {
+      return { error: new Error(data.error) };
+    }
+
+    return { error: null };
   };
 
   const updatePassword = async (newPassword: string) => {
