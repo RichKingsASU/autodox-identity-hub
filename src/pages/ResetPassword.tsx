@@ -36,23 +36,60 @@ export default function ResetPassword() {
   });
 
   useEffect(() => {
-    // Check for password recovery event
+    // Check if URL contains recovery token in hash fragment
+    const hash = window.location.hash;
+    const hasRecoveryToken = hash.includes('type=recovery') || 
+                             hash.includes('access_token');
+    
+    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log("Auth state change:", event, !!session);
+        
         if (event === "PASSWORD_RECOVERY") {
+          console.log("Password recovery event received");
+          setIsValidSession(true);
+          setIsLoading(false);
+        } else if (event === "SIGNED_IN" && hasRecoveryToken) {
+          // User signed in via recovery link
+          console.log("Signed in via recovery token");
           setIsValidSession(true);
           setIsLoading(false);
         } else if (session) {
-          // User might already have a session from the recovery link
+          // User already has a session
           setIsValidSession(true);
           setIsLoading(false);
-        } else {
+        } else if (!hasRecoveryToken) {
+          // No session and no recovery token in URL
           setIsLoading(false);
         }
       }
     );
 
-    // Also check current session
+    // If we have a recovery token, wait a bit for Supabase to process it
+    if (hasRecoveryToken) {
+      console.log("Recovery token detected in URL, waiting for processing...");
+      // Give Supabase time to process the hash fragment
+      const timeout = setTimeout(() => {
+        // After timeout, check session one more time
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) {
+            console.log("Session found after timeout");
+            setIsValidSession(true);
+          } else {
+            console.log("No session after timeout - token may be invalid");
+          }
+          setIsLoading(false);
+        });
+      }, 2000);
+      
+      return () => {
+        clearTimeout(timeout);
+        subscription.unsubscribe();
+      };
+    }
+
+    // No recovery token - check existing session immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsValidSession(true);
@@ -94,23 +131,36 @@ export default function ResetPassword() {
       return;
     }
 
-    const { error } = await updatePassword(formData.password);
+    try {
+      console.log("Attempting password update...");
+      const { error } = await updatePassword(formData.password);
 
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Update failed",
-        description: error.message,
-      });
-    } else {
+      if (error) {
+        console.error("Password update error:", error);
+        toast({
+          variant: "destructive",
+          title: "Update failed",
+          description: error.message,
+        });
+        return;
+      }
+
+      console.log("Password updated successfully");
       setIsSuccess(true);
       toast({
         title: "Password updated!",
         description: "Your password has been successfully reset.",
       });
+    } catch (error) {
+      console.error("Unexpected password update error:", error);
+      toast({
+        variant: "destructive",
+        title: "An unexpected error occurred",
+        description: "Please try again or request a new reset link.",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   if (isLoading) {

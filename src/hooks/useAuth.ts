@@ -186,9 +186,26 @@ export function useAuth() {
   };
 
   const updatePassword = async (newPassword: string) => {
+    // Verify we have an active session before attempting update
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      console.error("No active session for password update");
+      return { error: new Error("No active session. Please use the reset link from your email again.") };
+    }
+
+    console.log("Session verified, updating password for user:", session.user.id);
+    
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
+    
+    if (error) {
+      console.error("Supabase updateUser error:", error);
+    } else {
+      console.log("Password update successful");
+    }
+    
     return { error };
   };
 
