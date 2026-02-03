@@ -1,122 +1,120 @@
 
+# Plan: Fix Domain Management for Brands
 
-# Plan: Add Template Assignment to Brands Tab
+## Problem
+The Domain tab in the Edit Brand modal doesn't work because:
+1. `useDomains` hook is a non-functional stub (shows "Use brand settings" toast)
+2. `DomainManagementCard` depends on this broken hook
+3. Some edge functions expect a `domains` table that doesn't exist
 
-## Overview
-Add the ability to assign landing page templates to brands directly from the Brands admin tab. This includes displaying the current template, and allowing admins to change or assign templates.
+## Solution
+Implement working domain management using the existing `brands` table fields.
 
-## Part 1: Fix Build Errors (Edge Functions)
+## Changes
 
-Several edge functions have TypeScript errors due to untyped error handling and missing type definitions.
+### Part 1: Create Domain Management Hook for Brands
 
-### Files to Fix:
-- `supabase/functions/add-domain-to-netlify/index.ts`
-- `supabase/functions/check-ssl-status/index.ts`
-- `supabase/functions/domain-resolver/index.ts`
-- `supabase/functions/resend-domain-status/index.ts`
-- `supabase/functions/send-brand-event-email/index.ts`
-- `supabase/functions/serve-brand-landing/index.ts`
-- `supabase/functions/verify-domain-dns/index.ts`
+**New File: `src/hooks/useBrandDomain.ts`**
 
-### Fix Pattern:
-Replace `error.message` with proper type-safe access:
+A focused hook that manages domains through the brands table:
+
 ```typescript
-// Before
-error: error.message || 'An unexpected error occurred'
-
-// After  
-error: error instanceof Error ? error.message : 'An unexpected error occurred'
-```
-
-For `serve-brand-landing/index.ts`, add type for RPC result:
-```typescript
-interface BrandRouteResult {
-  brand_id: string;
-  // other fields as needed
+export const useBrandDomain = (brandId: string) => {
+  // State for domain, status, verification token
+  
+  // setDomain() - Updates brands.domain and generates verification token
+  // verifyDomain() - Calls verify-domain edge function
+  // provisionSSL() - Calls add-domain-to-netlify edge function (updated)
+  // checkStatus() - Calls check-domain-status edge function
+  // removeDomain() - Clears domain fields from brand
 }
 ```
 
----
+### Part 2: Replace DomainManagementCard Content
 
-## Part 2: Add Template Column to Brand Table
+**File: `src/components/admin/EditBrandModal.tsx`**
 
-### File: `src/components/admin/BrandPortfolioTable.tsx`
+Replace `DomainManagementCard` with inline domain management in the Domain tab:
 
-Add a new "Template" column showing the currently assigned template name (or "None").
+- **Current Domain Display**: Show domain, status badge, SSL status
+- **Add/Change Domain**: Input field with "Save Domain" button
+- **DNS Instructions**: Display required records (A record for apex, CNAME for subdomain)
+- **Verification Token**: Show TXT record instructions with copy button
+- **Action Buttons**: "Verify DNS", "Check SSL Status", "Remove Domain"
 
-### Changes:
-1. Accept `templates` prop (list of templates for lookup)
-2. Add "Template" column header after "Domain Status"
-3. Display template name or "None" badge for each brand
-4. Show template version badge (e.g., "v3")
+### Part 3: Update Edge Function
 
----
+**File: `supabase/functions/add-domain-to-netlify/index.ts`**
 
-## Part 3: Add Template Tab to Edit Brand Modal
-
-### File: `src/components/admin/EditBrandModal.tsx`
-
-Add a third tab for template management alongside "General" and "Domain".
-
-### Changes:
-1. Add `LayoutTemplate` icon import
-2. Add new "Template" tab trigger
-3. Create template selection content:
-   - Show current template info (name, version, applied date)
-   - Dropdown to select new template (filtered to published only)
-   - "Apply Template" button
-   - "Revert to Previous" button (if previous exists)
-4. Wire up `useTemplates` hook for `applyTemplateToBrand` and `revertBrandTemplate`
-5. Add `useAuth` hook to get current admin user ID
-
----
-
-## Part 4: Update Brand Type & Hook
-
-### File: `src/hooks/useBrands.ts`
-
-Extend the Brand interface and fetch to include template relationship:
+Change to work with `brands` table instead of non-existent `domains` table:
 
 ```typescript
-// Add to Brand interface
-active_template_id: string | null;
-applied_template_version: number | null;
-template_applied_at: string | null;
-// Add template name via join
-active_template_name?: string;
+// Before: queries 'domains' table
+const { data: domain } = await supabase.from('domains').select('*')
+
+// After: queries 'brands' table
+const { data: brand } = await supabase.from('brands').select('domain, domain_status, ...')
 ```
 
-Update `fetchBrands` query to join with `landing_templates`:
-```typescript
-.select(`
-  *,
-  landing_templates:active_template_id (
-    id,
-    name,
-    version
-  )
-`)
+### Part 4: Remove Unused Components
+
+Delete components that won't be needed:
+- `src/components/admin/DomainManagementCard.tsx` (replaced with inline UI)
+- `src/components/admin/DomainWizard.tsx` (replaced with inline UI)
+- `src/components/admin/DNSDetailsDialog.tsx` (merged into Domain tab)
+- `src/hooks/useDomains.ts` (replaced with useBrandDomain)
+
+## Domain Configuration Flow
+
+```text
+1. Admin enters domain in Edit Brand > Domain tab
+2. System generates verification token and saves to brand
+3. Admin adds DNS records at their registrar:
+   - TXT record: _autodox-verify.domain.com → token
+   - A record: domain.com → 75.2.60.5
+4. Admin clicks "Verify DNS" → calls verify-domain function
+5. On success, system calls add-domain-to-netlify function
+6. SSL auto-provisions via Netlify
+7. Domain becomes active
 ```
 
----
+## UI Mockup (Domain Tab)
 
-## Implementation Summary
+```text
+┌─────────────────────────────────────────────┐
+│ Current Domain                              │
+│ ┌─────────────────────────────────────────┐ │
+│ │ mybrand.com        [Active] [SSL: ✓]   │ │
+│ └─────────────────────────────────────────┘ │
+│                                             │
+│ Domain Name                                 │
+│ ┌─────────────────────────────────────────┐ │
+│ │ mybrand.com                             │ │
+│ └─────────────────────────────────────────┘ │
+│                                             │
+│ DNS Configuration Required:                 │
+│ ┌─────────────────────────────────────────┐ │
+│ │ Type: TXT                               │ │
+│ │ Name: _autodox-verify                   │ │
+│ │ Value: adx_xxxxx...          [Copy]     │ │
+│ ├─────────────────────────────────────────┤ │
+│ │ Type: A                                 │ │
+│ │ Name: @                                 │ │
+│ │ Value: 75.2.60.5             [Copy]     │ │
+│ └─────────────────────────────────────────┘ │
+│                                             │
+│ [Verify DNS]  [Check SSL]  [Remove Domain]  │
+└─────────────────────────────────────────────┘
+```
 
-| Component | Change |
-|-----------|--------|
-| 7 Edge Functions | Fix TypeScript error handling |
-| BrandPortfolioTable | Add Template column |
-| EditBrandModal | Add Template tab with assign/revert |
-| useBrands | Include template join in query |
+## Files Summary
 
-## User Flow
-
-1. Admin opens Brands tab
-2. Sees "Template" column showing assigned template or "None"
-3. Clicks "Edit" on a brand
-4. Navigates to "Template" tab
-5. Selects a published template from dropdown
-6. Clicks "Apply Template"
-7. Template is immediately applied to brand
-8. Can revert if needed using "Revert" button
-
+| Action | File |
+|--------|------|
+| Create | `src/hooks/useBrandDomain.ts` |
+| Update | `src/components/admin/EditBrandModal.tsx` |
+| Update | `supabase/functions/add-domain-to-netlify/index.ts` |
+| Delete | `src/components/admin/DomainManagementCard.tsx` |
+| Delete | `src/components/admin/DomainWizard.tsx` |
+| Delete | `src/components/admin/DNSDetailsDialog.tsx` |
+| Delete | `src/hooks/useDomains.ts` |
