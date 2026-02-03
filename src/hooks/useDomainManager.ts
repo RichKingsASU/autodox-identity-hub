@@ -126,6 +126,35 @@ export function useDomainManager() {
     }
   };
 
+  const retrySSL = async (brandId: string): Promise<boolean> => {
+    // For failed domains, reset status and retry provisioning
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .update({
+          domain_status: 'verified',
+          ssl_status: null,
+          domain_error: null,
+        })
+        .eq('id', brandId);
+
+      if (error) throw error;
+
+      toast.info('Retrying SSL provisioning...');
+      const success = await provisionSSL(brandId);
+      
+      if (success) {
+        toast.success('SSL provisioning restarted');
+      }
+      
+      await fetchBrands();
+      return success;
+    } catch (err: any) {
+      toast.error(`Failed to retry SSL: ${err.message}`);
+      return false;
+    }
+  };
+
   const checkStatus = async (brandId: string): Promise<boolean> => {
     try {
       const response = await supabase.functions.invoke('check-domain-status', {
@@ -210,6 +239,7 @@ export function useDomainManager() {
     fetchBrands,
     verifyDomain,
     provisionSSL,
+    retrySSL,
     checkStatus,
     removeDomain,
   };
