@@ -1,6 +1,11 @@
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+
+if (!RESEND_API_KEY) {
+  throw new Error("RESEND_API_KEY is not configured");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +16,7 @@ const corsHeaders = {
 interface VerificationEmailRequest {
   email: string;
   userName?: string;
+  brand_id?: string;
 }
 
 // HTML escape helper to prevent XSS
@@ -23,23 +29,66 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, "&#039;");
 }
 
-const handler = async (req: Request): Promise<Response> => {
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { email, userName }: VerificationEmailRequest = await req.json();
+    const { email, userName, brand_id }: VerificationEmailRequest = await req.json();
 
     const displayName = userName || email.split("@")[0];
     const safeDisplayName = escapeHtml(displayName);
-    const appUrl = Deno.env.get("SUPABASE_URL")?.replace(".supabase.co", "") || "";
 
-    const emailResponse = await resend.emails.send({
-      from: "Autodox <onboarding@resend.dev>",
-      to: [email],
-      subject: "Verify Your Email - Autodox",
-      html: `
+    // Initialize Supabase client
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    // Resolve brand and verified domain
+    let brandName = "Autodox";
+    let domain = "email.agents-institute.com";
+
+    const query = supabase
+      .from("brands")
+      .select(`
+        name,
+        domains (
+          domain,
+          status
+        )
+      `)
+      .eq("domains.is_primary", true)
+      .eq("domains.status", "verified");
+
+    if (brand_id) {
+      query.eq("id", brand_id);
+    } else {
+      // Find the first verified brand
+      query.limit(1);
+    }
+
+    const { data: brandData, error: brandError } = await query.single();
+
+    if (!brandError && brandData) {
+      brandName = brandData.name;
+      domain = brandData.domains?.[0]?.domain || domain;
+    }
+
+    const fromAddress = `${brandName} <noreply@${domain}>`;
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [email],
+        subject: `Verify Your Email - ${brandName}`,
+        html: `
         <!DOCTYPE html>
         <html>
         <head>
@@ -67,7 +116,7 @@ const handler = async (req: Request): Promise<Response> => {
                         Hi ${safeDisplayName},
                       </p>
                       <p style="margin: 0 0 30px; color: #b0b0b0; font-size: 15px; line-height: 1.6;">
-                        Welcome to Autodox! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.
+                        Welcome to ${brandName}! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.
                       </p>
                       
                       <!-- Info Box -->
@@ -89,7 +138,7 @@ const handler = async (req: Request): Promise<Response> => {
                       <!-- Security Notice -->
                       <div style="background-color: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 20px;">
                         <p style="margin: 0; color: #888888; font-size: 13px; line-height: 1.5;">
-                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This email was sent because someone registered with this address on Autodox. If this wasn't you, you can safely ignore this email.
+                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This email was sent because someone registered with this address on ${brandName}. If this wasn't you, you can safely ignore this email.
                         </p>
                       </div>
                     </td>
@@ -99,7 +148,7 @@ const handler = async (req: Request): Promise<Response> => {
                   <tr>
                     <td style="padding: 30px 40px; border-top: 1px solid rgba(255,255,255,0.1);">
                       <p style="margin: 0; color: #666666; font-size: 12px; text-align: center;">
-                        © ${new Date().getFullYear()} Autodox. All rights reserved.
+                        © ${new Date().getFullYear()} ${brandName}. All rights reserved.
                       </p>
                     </td>
                   </tr>
@@ -109,13 +158,31 @@ const handler = async (req: Request): Promise<Response> => {
           </table>
         </body>
         </html>
-      `,
+        `,
+      }),
     });
 
-    console.log("Verification email sent:", emailResponse);
+    const data = await res.json();
+    const status = res.ok ? "sent" : "failed";
+
+    // Log to email_logs
+    await supabase.from("email_logs").insert({
+      to_email: email,
+      subject: `Verify Your Email - ${brandName}`,
+      resend_id: data.id || null,
+      status: status,
+    });
+
+    if (!res.ok) {
+      console.error("Resend API error:", data);
+      return new Response(JSON.stringify({ error: data }), {
+        status: 502,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
 
     return new Response(
-      JSON.stringify({ success: true, data: emailResponse }),
+      JSON.stringify({ success: true, data }),
       {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -131,6 +198,4 @@ const handler = async (req: Request): Promise<Response> => {
       }
     );
   }
-};
-
-Deno.serve(handler);
+});

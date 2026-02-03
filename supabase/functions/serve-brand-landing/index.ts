@@ -49,7 +49,23 @@ Deno.serve(async (req) => {
 
     console.log(`Serving brand landing for domain: ${cleanDomain}`);
 
-    // Fetch brand by domain
+    // Fetch brand by domain using the new RPC function
+    const { data: routeData, error: routeError } = await supabase
+      .rpc('get_brand_by_domain', { hostname: cleanDomain })
+      .single();
+
+    if (routeError || !routeData) {
+      console.log(`Brand not found for domain: ${cleanDomain}`, routeError);
+      return new Response(
+        JSON.stringify({
+          error: "Brand not found or not active",
+          domain: cleanDomain
+        }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch full brand and template details since RPC only returns core fields
     const { data: brand, error: brandError } = await supabase
       .from("brands")
       .select(`
@@ -58,7 +74,6 @@ Deno.serve(async (req) => {
         slug,
         domain,
         settings,
-        domain_status,
         active_template_id,
         landing_templates (
           id,
@@ -69,20 +84,12 @@ Deno.serve(async (req) => {
           sections_enabled
         )
       `)
-      .eq("domain", cleanDomain)
-      .eq("domain_status", "active")
-      .eq("status", "active")
+      .eq("id", routeData.brand_id)
       .single();
 
     if (brandError || !brand) {
-      console.log(`Brand not found for domain: ${cleanDomain}`, brandError);
-      return new Response(
-        JSON.stringify({ 
-          error: "Brand not found or not active",
-          domain: cleanDomain 
-        }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      console.error(`Failed to fetch full brand details for ID: ${routeData.brand_id}`, brandError);
+      throw new Error("Failed to fetch brand details");
     }
 
     // Build brand configuration response
@@ -113,12 +120,12 @@ Deno.serve(async (req) => {
         // Include rendering hints
         renderMode: "client", // or "server" for SSR
       }),
-      { 
-        headers: { 
-          ...corsHeaders, 
+      {
+        headers: {
+          ...corsHeaders,
           "Content-Type": "application/json",
           "Cache-Control": "public, max-age=60", // Cache for 1 minute
-        } 
+        }
       }
     );
   } catch (error) {

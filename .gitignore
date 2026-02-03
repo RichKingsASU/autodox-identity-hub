@@ -25,3 +25,16 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# Secrets and MCP Configs
+.env
+*-mcp-config.json
+mcp-config.json
+supabase-mcp-config.json
+
+# Debug and Temp files
+*.txt
+brand_debug.json
+all_brands_debug.json
+logs_dump.json
+fetch_brands.ts
