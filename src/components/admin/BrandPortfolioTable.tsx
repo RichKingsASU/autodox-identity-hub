@@ -13,7 +13,8 @@ import {
   Globe,
   Loader2,
   Check,
-  AlertCircle
+  AlertCircle,
+  LayoutTemplate
 } from "lucide-react";
 import { format } from "date-fns";
 import { Brand } from "@/hooks/useBrands";
@@ -153,6 +154,7 @@ export function BrandPortfolioTable({
             <TableRow>
               <TableHead>Brand</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Template</TableHead>
               <TableHead>Domain</TableHead>
               <TableHead>Domain Status</TableHead>
               <TableHead>Usage</TableHead>
@@ -163,7 +165,7 @@ export function BrandPortfolioTable({
           <TableBody>
             {filteredBrands.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                   <Building2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No brands found</p>
                 </TableCell>
@@ -192,6 +194,19 @@ export function BrandPortfolioTable({
                     <StatusPill status={statusMap[brand.status].pillStatus}>
                       {statusMap[brand.status].label}
                     </StatusPill>
+                  </TableCell>
+                  <TableCell>
+                    {brand.active_template ? (
+                      <div className="flex items-center gap-2">
+                        <LayoutTemplate className="h-4 w-4 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium">{brand.active_template.name}</p>
+                          <p className="text-xs text-muted-foreground">v{brand.active_template.version}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">None</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {brand.domain ? (

@@ -24,6 +24,18 @@ export interface Brand {
   ssl_status: string | null;
   cloudflare_hostname_id: string | null;
   domain_error: string | null;
+  // Template fields
+  active_template_id: string | null;
+  applied_template_version: number | null;
+  template_applied_at: string | null;
+  previous_template_id: string | null;
+  previous_template_version: number | null;
+  // Joined template info
+  active_template?: {
+    id: string;
+    name: string;
+    version: number;
+  } | null;
 }
 
 export interface CreateBrandData {
@@ -44,14 +56,26 @@ export function useBrands() {
     
     const { data, error: fetchError } = await supabase
       .from("brands")
-      .select("*")
+      .select(`
+        *,
+        landing_templates:active_template_id (
+          id,
+          name,
+          version
+        )
+      `)
       .order("created_at", { ascending: false });
 
     if (fetchError) {
       setError(fetchError.message);
       toast.error("Failed to fetch brands");
     } else {
-      setBrands(data as Brand[]);
+      // Transform data to include active_template
+      const brandsWithTemplate = (data || []).map((brand: any) => ({
+        ...brand,
+        active_template: brand.landing_templates || null,
+      }));
+      setBrands(brandsWithTemplate as Brand[]);
     }
     setLoading(false);
   }, []);
