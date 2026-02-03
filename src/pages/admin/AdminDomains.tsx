@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Globe, Plus, Activity, CheckCircle2, AlertCircle, Clock, Search } from "lucide-react";
+import { Globe, Plus, CheckCircle2, AlertCircle, Clock, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { DomainCard } from "@/components/admin/DomainCard";
+import { DomainsTable } from "@/components/admin/DomainsTable";
 import { DomainListSkeleton } from "@/components/admin/DomainSkeletons";
+import { NetlifyConnectionStatus } from "@/components/admin/NetlifyConnectionStatus";
 import { useDomainManager } from "@/hooks/useDomainManager";
 import { EditBrandModal } from "@/components/admin/EditBrandModal";
 import { useBrands, type Brand } from "@/hooks/useBrands";
@@ -16,16 +18,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 export default function AdminDomains() {
   const {
     brandsWithDomains,
     brandsWithoutDomains,
+    brands,
     stats,
     loading,
     error,
     fetchBrands,
     verifyDomain,
+    provisionSSL,
+    retrySSL,
     checkStatus,
     removeDomain,
   } = useDomainManager();
@@ -37,6 +48,7 @@ export default function AdminDomains() {
   const [selectedBrandForConfig, setSelectedBrandForConfig] = useState<Brand | null>(null);
   const [showAddDomain, setShowAddDomain] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
   useEffect(() => {
     fetchBrands();
@@ -58,6 +70,22 @@ export default function AdminDomains() {
     return matchesSearch && matchesStatus;
   });
 
+  // All brands for table view
+  const filteredAllBrands = brands.filter(brand => {
+    const matchesSearch = 
+      brand.domain?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      brand.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = 
+      statusFilter === "all" ||
+      (statusFilter === "active" && brand.domain_status === "active") ||
+      (statusFilter === "pending" && ["pending", "verifying", "provisioning_ssl"].includes(brand.domain_status || "")) ||
+      (statusFilter === "failed" && brand.domain_status === "failed") ||
+      (statusFilter === "none" && !brand.domain);
+
+    return matchesSearch && matchesStatus;
+  });
+
   const handleConfigureBrand = (brandId: string) => {
     const brand = allBrands.find(b => b.id === brandId);
     if (brand) {
@@ -71,6 +99,10 @@ export default function AdminDomains() {
       await fetchBrands();
     }
     return success;
+  };
+
+  const handleAddDomain = () => {
+    setShowAddDomain(true);
   };
 
   const StatCard = ({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) => (
@@ -98,10 +130,15 @@ export default function AdminDomains() {
             Manage custom domains for all brands
           </p>
         </div>
-        <Button onClick={() => setShowAddDomain(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Domain
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Environment Status */}
+          <NetlifyConnectionStatus />
+          
+          <Button onClick={handleAddDomain}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Domain
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -112,28 +149,49 @@ export default function AdminDomains() {
         <StatCard icon={AlertCircle} label="Failed" value={stats.failed} color="bg-destructive/10 text-destructive" />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search domains or brands..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {/* Filters and View Toggle */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-4 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search domains or brands..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="none">No Domain</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-          </SelectContent>
-        </Select>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchBrands()}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
+            <TabsList className="h-9">
+              <TabsTrigger value="table" className="text-xs">Table</TabsTrigger>
+              <TabsTrigger value="cards" className="text-xs">Cards</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       {/* Domain List */}
@@ -146,6 +204,15 @@ export default function AdminDomains() {
           <p className="text-muted-foreground mb-4">{error}</p>
           <Button onClick={fetchBrands}>Try Again</Button>
         </GlassCard>
+      ) : viewMode === "table" ? (
+        <DomainsTable
+          domains={filteredAllBrands}
+          loading={loading}
+          onVerifyDNS={verifyDomain}
+          onActivateDomain={provisionSSL}
+          onRetrySSL={retrySSL}
+          onAddDomain={handleAddDomain}
+        />
       ) : filteredBrands.length === 0 ? (
         <GlassCard className="text-center py-12">
           <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -158,7 +225,7 @@ export default function AdminDomains() {
               : "Add a custom domain to get started"}
           </p>
           {!searchQuery && statusFilter === "all" && (
-            <Button onClick={() => setShowAddDomain(true)}>
+            <Button onClick={handleAddDomain}>
               <Plus className="h-4 w-4 mr-2" />
               Add Domain
             </Button>
@@ -215,6 +282,11 @@ export default function AdminDomains() {
                     ))}
                   </SelectContent>
                 </Select>
+                {brandsWithoutDomains.length === 0 && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    All brands have domains configured
+                  </p>
+                )}
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowAddDomain(false)}>
