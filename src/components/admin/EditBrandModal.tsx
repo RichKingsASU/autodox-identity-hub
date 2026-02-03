@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Building2, Globe, Settings, LayoutTemplate, RotateCcw, Calendar } from "lucide-react";
+import { Building2, Globe, Settings, LayoutTemplate, RotateCcw, Calendar, Mail } from "lucide-react";
 import { Brand } from "@/hooks/useBrands";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandDomainTab } from "./BrandDomainTab";
+import { EmailSettingsTab } from "./EmailSettingsTab";
 import {
   Dialog,
   DialogContent,
@@ -137,7 +138,7 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               General
@@ -145,6 +146,10 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
             <TabsTrigger value="domain" className="flex items-center gap-2">
               <Globe className="h-4 w-4" />
               Domain
+            </TabsTrigger>
+            <TabsTrigger value="email" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Email
             </TabsTrigger>
             <TabsTrigger value="template" className="flex items-center gap-2">
               <LayoutTemplate className="h-4 w-4" />
@@ -206,6 +211,10 @@ export function EditBrandModal({ brand, isOpen, onClose, onSave, onRefresh }: Ed
               initialDomain={brand.domain}
               onDomainChange={onRefresh}
             />
+          </TabsContent>
+
+          <TabsContent value="email" className="mt-4">
+            <EmailSettingsTab brandId={brand.id} brandName={brand.name} />
           </TabsContent>
 
           <TabsContent value="template" className="space-y-6 mt-4">
