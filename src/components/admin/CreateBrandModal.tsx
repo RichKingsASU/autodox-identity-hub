@@ -57,9 +57,9 @@ export function CreateBrandModal({ isOpen, onClose, onSubmit, isLoading }: Creat
 
   const handleFormSubmit = async (data: BrandFormData) => {
     await onSubmit({
-      name: data.name,
-      slug: data.slug,
-      domain: data.domain,
+      name: data.name.trim(),
+      slug: data.slug.trim(),
+      domain: data.domain?.trim() || undefined,
       monthly_sms_limit: data.monthly_sms_limit,
     });
     reset();

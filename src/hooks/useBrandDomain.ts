@@ -73,17 +73,25 @@ export function useBrandDomain(brandId: string | undefined) {
   const setDomain = async (domainName: string): Promise<boolean> => {
     if (!brandId) return false;
     
+    // Trim whitespace to prevent bypassing uniqueness checks
+    const trimmedDomain = domainName.trim();
+    
+    if (!trimmedDomain) {
+      toast.error('Domain cannot be empty');
+      return false;
+    }
+    
     setLoading(true);
     
     // Validate domain format
     const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-    if (!domainRegex.test(domainName)) {
+    if (!domainRegex.test(trimmedDomain)) {
       toast.error('Invalid domain format');
       setLoading(false);
       return false;
     }
 
-    const normalizedDomain = domainName.toLowerCase();
+    const normalizedDomain = trimmedDomain.toLowerCase();
 
     // Check for reserved domains
     if (isReservedDomain(normalizedDomain)) {
