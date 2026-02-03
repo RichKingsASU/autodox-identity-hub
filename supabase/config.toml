@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.send-signup-verification]
 verify_jwt = false
+
+[functions.netlify-mcp]
+verify_jwt = false
