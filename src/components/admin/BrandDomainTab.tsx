@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrandDomain, type DomainStatus } from "@/hooks/useBrandDomain";
 import { useDNSRequirements } from "@/hooks/useDNSRequirements";
+import { DNSSyncIndicator } from "./DNSSyncIndicator";
 import { toast } from "sonner";
 
 interface BrandDomainTabProps {
@@ -35,7 +36,9 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
   // Fetch DNS requirements dynamically from Netlify API
   const { 
     dnsConfig, 
-    loading: dnsLoading 
+    loading: dnsLoading,
+    lastSynced,
+    fetchDNSRequirements
   } = useDNSRequirements(
     domainState?.domain || null, 
     domainState?.domain_verification_token || null
@@ -193,6 +196,14 @@ export function BrandDomainTab({ brandId, initialDomain, onDomainChange }: Brand
       {/* DNS Instructions */}
       {showDNSInstructions && domainState.domain_verification_token && (
         <div className="space-y-4">
+          {/* DNS Sync Status Indicator */}
+          <DNSSyncIndicator
+            source={dnsConfig?.source || null}
+            lastSynced={lastSynced}
+            loading={dnsLoading}
+            onRefresh={fetchDNSRequirements}
+          />
+
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>

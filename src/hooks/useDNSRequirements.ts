@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface DNSRecord {
@@ -34,6 +34,8 @@ export function useDNSRequirements(domain: string | null, verificationToken: str
   const [dnsConfig, setDnsConfig] = useState<DNSConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const isMounted = useRef(true);
 
   const fetchDNSRequirements = useCallback(async () => {
     if (!domain) {
@@ -49,6 +51,8 @@ export function useDNSRequirements(domain: string | null, verificationToken: str
         body: { domain, verification_token: verificationToken },
       });
 
+      if (!isMounted.current) return;
+
       if (fnError) {
         console.error("Error fetching DNS requirements:", fnError);
         // Use fallback on error
@@ -57,24 +61,33 @@ export function useDNSRequirements(domain: string | null, verificationToken: str
       } else {
         setDnsConfig(data as DNSConfig);
       }
+      setLastSynced(new Date());
     } catch (err) {
+      if (!isMounted.current) return;
       console.error("Failed to fetch DNS requirements:", err);
       // Use fallback on network error
       setDnsConfig(createFallbackConfig(domain, verificationToken));
       setError("Using fallback DNS configuration");
+      setLastSynced(new Date());
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, [domain, verificationToken]);
 
   // Auto-fetch when domain or token changes
   useEffect(() => {
+    isMounted.current = true;
     if (domain) {
       fetchDNSRequirements();
     }
+    return () => {
+      isMounted.current = false;
+    };
   }, [domain, verificationToken, fetchDNSRequirements]);
 
-  return { dnsConfig, loading, error, fetchDNSRequirements };
+  return { dnsConfig, loading, error, lastSynced, fetchDNSRequirements };
 }
 
 // Helper to create fallback config based on domain

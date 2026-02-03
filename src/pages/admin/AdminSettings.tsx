@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Settings, Mail, Gauge, ToggleLeft, Save } from "lucide-react";
+import { Settings, Mail, Gauge, ToggleLeft, Save, Plug } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { IntegrationStatusPanel } from "@/components/admin/IntegrationStatusPanel";
 
 interface AdminSettingsState {
   general: {
@@ -140,10 +141,14 @@ export default function AdminSettings() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">General</span>
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2">
+            <Plug className="h-4 w-4" />
+            <span className="hidden sm:inline">Integrations</span>
           </TabsTrigger>
           <TabsTrigger value="email" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
@@ -195,6 +200,30 @@ export default function AdminSettings() {
               </div>
             </div>
           </GlassCard>
+        </TabsContent>
+
+        {/* Integrations Tab */}
+        <TabsContent value="integrations">
+          <div className="space-y-6">
+            <IntegrationStatusPanel showRefresh autoRefresh />
+            <GlassCard>
+              <h2 className="text-xl font-semibold text-foreground mb-4">About Integrations</h2>
+              <div className="space-y-4 text-sm text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">Netlify</strong> - Handles custom domain provisioning, 
+                  DNS verification, and SSL certificate management for brand portals.
+                </p>
+                <p>
+                  <strong className="text-foreground">Email (Resend)</strong> - Manages transactional email 
+                  delivery including verification emails, password resets, and notifications.
+                </p>
+                <p>
+                  <strong className="text-foreground">Database</strong> - Lovable Cloud provides the backend 
+                  database for storing brands, users, applications, and configurations.
+                </p>
+              </div>
+            </GlassCard>
+          </div>
         </TabsContent>
 
         {/* Email Tab */}

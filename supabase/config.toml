@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.get-dns-requirements]
 verify_jwt = false
+
+[functions.resend-health-check]
+verify_jwt = false
