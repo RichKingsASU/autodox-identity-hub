@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Terminal } from "lucide-react";
 import { HeroSection } from "@/components/landing/HeroSection";
@@ -25,45 +25,9 @@ const Index = () => {
     email?: string;
     phone?: string;
   }>({});
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const redirectHandled = useRef(false);
 
-  // Role-based redirect after login
-  useEffect(() => {
-    if (!user || adminLoading || loading || redirectHandled.current) return;
-
-    if (isAdmin) {
-      redirectHandled.current = true;
-      navigate("/admin");
-    } else if (application) {
-      // User has an application, redirect to dashboard
-      redirectHandled.current = true;
-      navigate("/dashboard");
-    } else {
-      // User has no application, redirect to application page
-      redirectHandled.current = true;
-      navigate("/application");
-    }
-  }, [user, isAdmin, adminLoading, loading, application, navigate]);
-
-  // Fallback timeout to prevent infinite loading
-  useEffect(() => {
-    if (loading && !loadingTimedOut) {
-      timeoutRef.current = setTimeout(() => {
-        setLoadingTimedOut(true);
-      }, 3000);
-    }
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [loading, loadingTimedOut]);
-
-  // Include adminLoading in loading check to prevent race condition
-  // where content renders before redirect logic can execute
-  const isActuallyLoading = (loading || adminLoading) && !loadingTimedOut;
+  // Show loading spinner while auth state is being determined
+  const isLoading = loading || adminLoading;
 
 
   const handleLeadComplete = (data: {
@@ -82,7 +46,8 @@ const Index = () => {
     setShowAuthModal(true);
   };
 
-  if (isActuallyLoading) {
+  // Show loading spinner while determining auth state
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <motion.div
@@ -94,6 +59,18 @@ const Index = () => {
     );
   }
 
+  // Redirect authenticated users - this happens BEFORE any content renders
+  if (user) {
+    if (isAdmin) {
+      return <Navigate to="/admin" replace />;
+    }
+    if (application) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return <Navigate to="/application" replace />;
+  }
+
+  // Only render landing page for unauthenticated users
   return (
     <>
       <AnimatePresence mode="wait">
