@@ -7,6 +7,8 @@ import { SDKFocusedLayout } from "./SDKFocusedLayout";
 import { GlobalReachLayout } from "./GlobalReachLayout";
 import { SecurityFirstLayout } from "./SecurityFirstLayout";
 import { ConversionOptimizedLayout } from "./ConversionOptimizedLayout";
+import { KoalaSignLayout } from "./KoalaSignLayout";
+import { RedlineDeliveryLayout } from "./RedlineDeliveryLayout";
 import { AlertTriangle } from "lucide-react";
 
 interface LayoutRendererProps extends LayoutProps {
@@ -22,6 +24,8 @@ const layoutComponents: Record<LandingBaseLayout, React.ComponentType<LayoutProp
   global_reach: GlobalReachLayout,
   security_first: SecurityFirstLayout,
   conversion_optimized: ConversionOptimizedLayout,
+  koala_sign: KoalaSignLayout,
+  redline_delivery: RedlineDeliveryLayout,
 };
 
 export function LayoutRenderer({ baseLayout, copy, theme, sectionsEnabled, previewMode }: LayoutRendererProps) {
@@ -62,4 +66,6 @@ export const layoutDisplayNames: Record<LandingBaseLayout, string> = {
   global_reach: 'Global Reach',
   security_first: 'Security First',
   conversion_optimized: 'Conversion Optimized',
+  koala_sign: 'Koala Sign (Document Security)',
+  redline_delivery: 'Redline Delivery (Corporate)',
 };
