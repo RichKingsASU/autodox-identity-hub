@@ -8,7 +8,9 @@ export type LandingBaseLayout =
   | 'sdk_focused'
   | 'global_reach'
   | 'security_first'
-  | 'conversion_optimized';
+  | 'conversion_optimized'
+  | 'koala_sign'
+  | 'redline_delivery';
 
 export type TemplateStatus = 'draft' | 'published' | 'disabled';
 
@@ -16,9 +18,49 @@ export interface FeatureItem {
   title: string;
   description: string;
   icon?: string;
+  iconBg?: string;
+  span?: string;
+  large?: boolean;
+}
+
+export interface PricingPlan {
+  name: string;
+  price: string;
+  period?: string;
+  description: string;
+  features: string[];
+  cta: string;
+  popular?: boolean;
+}
+
+export interface FAQItem {
+  question: string;
+  answer: string;
+}
+
+export interface ServiceItem {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  description: string;
+  size?: 'small' | 'medium' | 'large';
+}
+
+export interface TestimonialItem {
+  quote: string;
+  author: string;
+  role: string;
+  company?: string;
+  avatar?: string;
+}
+
+export interface StatItem {
+  value: string;
+  label: string;
 }
 
 export interface DefaultCopy {
+  // Common fields
   heroHeadline: string;
   heroSubheadline: string;
   primaryCtaText: string;
@@ -28,6 +70,37 @@ export interface DefaultCopy {
   featureItems?: FeatureItem[];
   trustItems?: string[];
   complianceBadges?: string[];
+
+  // Brand info
+  brandName?: string;
+  brandTagline?: string;
+
+  // Extended hero
+  heroHeadlineAccent?: string;
+  secondaryCtaText?: string;
+
+  // Section headers
+  featuresSectionTitle?: string;
+  featuresSectionSubtitle?: string;
+  pricingSectionTitle?: string;
+  pricingSectionSubtitle?: string;
+  testimonialsSectionTitle?: string;
+  testimonialsSectionSubtitle?: string;
+  faqSectionTitle?: string;
+  faqSectionSubtitle?: string;
+  contactSectionTitle?: string;
+  contactSectionSubtitle?: string;
+
+  // Content arrays
+  pricingPlans?: PricingPlan[];
+  faqs?: FAQItem[];
+  services?: ServiceItem[];
+  testimonials?: TestimonialItem[];
+  stats?: StatItem[];
+
+  // Footer
+  footerTagline?: string;
+  copyright?: string;
 }
 
 export interface ThemeOverrides {
@@ -43,6 +116,12 @@ export interface SectionsEnabled {
   testimonials: boolean;
   compliance: boolean;
   footer: boolean;
+  // Extended sections
+  faq?: boolean;
+  contact?: boolean;
+  services?: boolean;
+  about?: boolean;
+  stats?: boolean;
 }
 
 export interface EditableFields {
