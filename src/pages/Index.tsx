@@ -8,21 +8,15 @@ import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { BlogSection } from "@/components/landing/BlogSection";
 import { Footer } from "@/components/landing/Footer";
-import { ApplicationStepper } from "@/components/application/ApplicationStepper";
-import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
-import { useToast } from "@/hooks/use-toast";
-
-type AppState = "landing" | "application" | "dashboard";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, profile, application, loading, signOut } = useAuth();
+  const { user, application, loading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdminAuth();
-  const { toast } = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [prefillData, setPrefillData] = useState<{
@@ -33,24 +27,25 @@ const Index = () => {
   }>({});
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const welcomeToastShown = useRef(false);
-  const previousStatusRef = useRef<string | null>(null);
   const redirectHandled = useRef(false);
 
   // Role-based redirect after login
   useEffect(() => {
-    if (!user || adminLoading || redirectHandled.current) return;
-    
-    // Only redirect if user has an approved application or is admin
+    if (!user || adminLoading || loading || redirectHandled.current) return;
+
     if (isAdmin) {
       redirectHandled.current = true;
       navigate("/admin");
-    } else if (user) {
-      // Redirect authenticated users to dashboard
+    } else if (application) {
+      // User has an application, redirect to dashboard
       redirectHandled.current = true;
       navigate("/dashboard");
+    } else {
+      // User has no application, redirect to application page
+      redirectHandled.current = true;
+      navigate("/application");
     }
-  }, [user, isAdmin, adminLoading, navigate]);
+  }, [user, isAdmin, adminLoading, loading, application, navigate]);
 
   // Fallback timeout to prevent infinite loading
   useEffect(() => {
@@ -66,52 +61,10 @@ const Index = () => {
     };
   }, [loading, loadingTimedOut]);
 
-  const isActuallyLoading = loading && !loadingTimedOut;
+  // Include adminLoading in loading check to prevent race condition
+  // where content renders before redirect logic can execute
+  const isActuallyLoading = (loading || adminLoading) && !loadingTimedOut;
 
-  // Determine app state based on auth and application status
-  const getAppState = (): AppState => {
-    if (!user) return "landing";
-    if (!application) return "application";
-    return "dashboard";
-  };
-
-  const appState = isActuallyLoading ? "landing" : getAppState();
-  const isPending = application?.status === "pending";
-
-  // Show welcome toast when user first arrives at dashboard
-  useEffect(() => {
-    if (appState === "dashboard" && !welcomeToastShown.current) {
-      welcomeToastShown.current = true;
-      toast({
-        title: isPending ? "Application submitted!" : "Welcome back!",
-        description: isPending 
-          ? "Your application is under review. We'll notify you once approved."
-          : "Your dashboard is ready. Start processing verifications.",
-      });
-    }
-  }, [appState, isPending, toast]);
-
-  // Real-time status change notifications
-  useEffect(() => {
-    const currentStatus = application?.status ?? null;
-    
-    if (previousStatusRef.current !== null && currentStatus !== null) {
-      if (previousStatusRef.current === "pending" && currentStatus === "approved") {
-        toast({
-          title: "🎉 Application Approved!",
-          description: "Congratulations! You now have full access to all features.",
-        });
-      } else if (previousStatusRef.current === "pending" && currentStatus === "rejected") {
-        toast({
-          variant: "destructive",
-          title: "Application Not Approved",
-          description: "Please contact support for more information.",
-        });
-      }
-    }
-    
-    previousStatusRef.current = currentStatus;
-  }, [application?.status, toast]);
 
   const handleLeadComplete = (data: {
     firstName: string;
@@ -129,22 +82,6 @@ const Index = () => {
     setShowAuthModal(true);
   };
 
-  const handleSignOut = async () => {
-    const { error } = await signOut();
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign out failed",
-        description: error.message,
-      });
-    } else {
-      toast({
-        title: "Signed out",
-        description: "You have been successfully signed out.",
-      });
-    }
-  };
-
   if (isActuallyLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -160,14 +97,13 @@ const Index = () => {
   return (
     <>
       <AnimatePresence mode="wait">
-        {appState === "landing" && (
-          <motion.div
-            key="landing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="min-h-screen bg-background"
-          >
+        <motion.div
+          key="landing"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-screen bg-background"
+        >
             {/* Navigation */}
             <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border">
               <div className="container mx-auto px-6 h-16 flex items-center justify-between">
@@ -236,42 +172,7 @@ const Index = () => {
 
             {/* Footer */}
             <Footer />
-          </motion.div>
-        )}
-
-        {appState === "application" && user && (
-          <motion.div
-            key="application"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.4 }}
-          >
-            <ApplicationStepper
-              userData={{
-                firstName: profile?.first_name || "",
-                lastName: profile?.last_name || "",
-                email: profile?.email || user.email || "",
-                phone: profile?.phone || "",
-              }}
-            />
-          </motion.div>
-        )}
-
-        {appState === "dashboard" && user && (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <DashboardShell
-              isPending={isPending}
-              userName={profile?.first_name || "User"}
-              onSignOut={handleSignOut}
-            />
-          </motion.div>
-        )}
+        </motion.div>
       </AnimatePresence>
 
       <AnimatePresence>
