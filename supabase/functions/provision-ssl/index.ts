@@ -41,12 +41,12 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Validate user
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claims?.claims) {
+    // Validate user session
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("Auth validation failed:", userError?.message || "No user found");
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", details: userError?.message }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -62,37 +62,31 @@ Deno.serve(async (req) => {
 
     // Check if Netlify is configured
     if (!netlifyToken || !netlifySiteId) {
-      // Simulate SSL provisioning if Netlify is not configured
-      console.log("Netlify not configured, simulating SSL provisioning");
-      
-      await supabase
+      // In development mode without Netlify, simulate immediate success
+      // NOTE: setTimeout doesn't work reliably in serverless/edge functions
+      console.log("Netlify not configured, simulating SSL provisioning (dev mode)");
+
+      // Use service role to update status directly
+      const serviceClient = createClient(
+        supabaseUrl,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || supabaseAnonKey
+      );
+
+      await serviceClient
         .from("brands")
         .update({
-          domain_status: "provisioning_ssl",
-          ssl_status: "pending",
+          domain_status: "active",
+          ssl_status: "issued",
+          cloudflare_hostname_id: `simulated_${Date.now()}`,
+          domain_error: null,
         })
         .eq("id", brandId);
-
-      // Simulate async SSL provisioning
-      setTimeout(async () => {
-        const serviceClient = createClient(
-          supabaseUrl,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-        );
-        
-        await serviceClient
-          .from("brands")
-          .update({
-            domain_status: "active",
-            ssl_status: "active",
-          })
-          .eq("id", brandId);
-      }, 5000);
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: "SSL provisioning started (simulated - Netlify not configured)",
+          simulated: true,
+          message: "Domain activated (simulated - Netlify not configured)",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

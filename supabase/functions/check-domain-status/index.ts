@@ -18,6 +18,40 @@ interface NetlifyDomainResponse {
   verification_state?: string;
 }
 
+// Fetch with timeout and retry support
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 2,
+  timeoutMs = 15000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.log(`Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`);
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
+      }
+    }
+  }
+
+  throw lastError || new Error('All retry attempts failed');
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,12 +75,12 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Validate user
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claims?.claims) {
+    // Validate user session
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("Auth validation failed:", userError?.message || "No user found");
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", details: userError?.message }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -86,16 +120,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check status with Netlify
+    // Check status with Netlify (with retry and timeout)
     const netlifyUrl = `https://api.netlify.com/api/v1/sites/${netlifySiteId}/domains/${brand.domain}`;
-    
-    const response = await fetch(netlifyUrl, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${netlifyToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+
+    let response: Response;
+    try {
+      response = await fetchWithRetry(netlifyUrl, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${netlifyToken}`,
+          "Content-Type": "application/json",
+        },
+      }, 2, 15000);
+    } catch (fetchError) {
+      console.error("Netlify API request failed:", fetchError);
+      return new Response(
+        JSON.stringify({
+          status: brand.domain_status,
+          sslStatus: brand.ssl_status,
+          domain: brand.domain,
+          error: "Network error checking domain status",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!response.ok) {
       return new Response(

@@ -6,6 +6,41 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Fetch with timeout and retry support
+async function fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    maxRetries = 3,
+    timeoutMs = 30000
+): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.log(`Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`);
+
+            if (attempt < maxRetries) {
+                // Exponential backoff: 1s, 2s, 4s
+                await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
+            }
+        }
+    }
+
+    throw lastError || new Error('All retry attempts failed');
+}
+
 serve(async (req) => {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
@@ -13,15 +48,44 @@ serve(async (req) => {
     }
 
     try {
-        const { brand_id } = await req.json()
-
-        if (!brand_id) {
-            throw new Error('brand_id is required')
+        // Verify authentication
+        const authHeader = req.headers.get('Authorization')
+        if (!authHeader?.startsWith('Bearer ')) {
+            return new Response(
+                JSON.stringify({ success: false, error: 'Unauthorized - missing auth header' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
-        // Initialize Supabase client with service role
+        const body = await req.json()
+        // Accept both brandId and brand_id for backwards compatibility
+        const brand_id = body.brand_id || body.brandId
+
+        if (!brand_id) {
+            throw new Error('brand_id or brandId is required')
+        }
+
+        // Create auth client to verify user has permission
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+        const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: authHeader } },
+        })
+
+        // Verify user is authenticated and has admin role
+        const { data: { user }, error: authError } = await authClient.auth.getUser()
+        if (authError || !user) {
+            console.error('Auth validation failed:', authError?.message)
+            return new Response(
+                JSON.stringify({ success: false, error: 'Unauthorized - invalid session' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Initialize Supabase client with service role for DB operations
         const supabase = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
+            supabaseUrl,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
@@ -86,8 +150,8 @@ serve(async (req) => {
             )
         }
 
-        // Add domain to Netlify via API
-        const netlifyResponse = await fetch(
+        // Add domain to Netlify via API (with retry and timeout)
+        const netlifyResponse = await fetchWithRetry(
             `https://api.netlify.com/api/v1/sites/${netlifySiteId}/domains`,
             {
                 method: 'POST',
@@ -96,9 +160,11 @@ serve(async (req) => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    domain_name: brand.domain
+                    hostname: brand.domain
                 }),
-            }
+            },
+            3,  // maxRetries
+            30000  // 30 second timeout
         )
 
         const netlifyData = await netlifyResponse.json()
