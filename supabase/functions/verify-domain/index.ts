@@ -16,29 +16,51 @@ interface DNSResponse {
   }>;
 }
 
-async function queryDNS(domain: string, recordType: string): Promise<string[]> {
+// DNS query with retry and timeout support
+async function queryDNS(domain: string, recordType: string, maxRetries = 3): Promise<string[]> {
   const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${recordType}`;
-  
-  const response = await fetch(url, {
-    headers: {
-      "Accept": "application/dns-json",
-    },
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new Error(`DNS query failed: ${response.status}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/dns-json",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`DNS query failed: ${response.status}`);
+      }
+
+      const data: DNSResponse = await response.json();
+
+      if (!data.Answer) {
+        return [];
+      }
+
+      // Extract TXT record values (remove surrounding quotes)
+      return data.Answer
+        .filter((answer) => answer.type === 16) // TXT record type
+        .map((answer) => answer.data.replace(/^"|"$/g, ""));
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.log(`DNS query attempt ${attempt}/${maxRetries} failed: ${lastError.message}`);
+
+      if (attempt < maxRetries) {
+        // Wait before retry: 1s, 2s
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+      }
+    }
   }
 
-  const data: DNSResponse = await response.json();
-  
-  if (!data.Answer) {
-    return [];
-  }
-
-  // Extract TXT record values (remove surrounding quotes)
-  return data.Answer
-    .filter((answer) => answer.type === 16) // TXT record type
-    .map((answer) => answer.data.replace(/^"|"$/g, ""));
+  throw lastError || new Error("DNS query failed after all retries");
 }
 
 Deno.serve(async (req) => {
@@ -62,12 +84,12 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Validate user
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claims?.claims) {
+    // Validate user session
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("Auth validation failed:", userError?.message || "No user found");
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", details: userError?.message }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -83,10 +83,32 @@ export function useBrandDomain(brandId: string | undefined) {
     
     setLoading(true);
     
+    // Validate domain length (max 253 chars total)
+    if (trimmedDomain.length > 253) {
+      toast.error('Domain name is too long (max 253 characters)');
+      setLoading(false);
+      return false;
+    }
+
+    // Validate each label length (max 63 chars per label)
+    const labels = trimmedDomain.split('.');
+    for (const label of labels) {
+      if (label.length > 63) {
+        toast.error('Each part of the domain must be 63 characters or less');
+        setLoading(false);
+        return false;
+      }
+      if (label.length === 0) {
+        toast.error('Invalid domain format: empty label');
+        setLoading(false);
+        return false;
+      }
+    }
+
     // Validate domain format
     const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
     if (!domainRegex.test(trimmedDomain)) {
-      toast.error('Invalid domain format');
+      toast.error('Invalid domain format. Use lowercase letters, numbers, and hyphens only.');
       setLoading(false);
       return false;
     }
