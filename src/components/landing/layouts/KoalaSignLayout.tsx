@@ -257,7 +257,7 @@ export function KoalaSignLayout({ copy, theme, sectionsEnabled, previewMode }: L
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {pricingPlans.map((plan, index) => (
                 <AnimatedSection key={index} delay={index * 75} animation={plan.popular ? "scale" : "fade-up"}>
-                  <div className={`relative bg-white/70 backdrop-blur-xl rounded-3xl p-7 border shadow-lg transition-all duration-300 h-full flex flex-col ${plan.popular ? 'border-primary/30 ring-2' : 'border-white/30'}`} style={plan.popular ? { borderColor: `${theme.primaryColor}30`, ringColor: `${theme.primaryColor}10` } : {}}>
+                  <div className={`relative bg-white/70 backdrop-blur-xl rounded-3xl p-7 border shadow-lg transition-all duration-300 h-full flex flex-col ${plan.popular ? 'border-primary/30 ring-2' : 'border-white/30'}`} style={plan.popular ? { borderColor: `${theme.primaryColor}30`, boxShadow: `0 0 0 4px ${theme.primaryColor}10` } : {}}>
                     {plan.popular && (
                       <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1" style={{ background: `linear-gradient(to r, ${theme.primaryColor}, ${theme.accentColor})` }}>
                         <Star className="h-3 w-3 fill-current" />

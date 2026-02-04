@@ -591,6 +591,8 @@ export type Database = {
         | "global_reach"
         | "security_first"
         | "conversion_optimized"
+        | "koala_sign"
+        | "redline_delivery"
       template_status: "draft" | "published" | "disabled"
     }
     CompositeTypes: {
@@ -739,6 +741,8 @@ export const Constants = {
         "global_reach",
         "security_first",
         "conversion_optimized",
+        "koala_sign",
+        "redline_delivery",
       ],
       template_status: ["draft", "published", "disabled"],
     },
