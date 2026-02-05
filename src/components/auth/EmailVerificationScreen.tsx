@@ -27,11 +27,11 @@ export function EmailVerificationScreen({
     setResendSuccess(false);
 
     try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo: window.location.origin,
+      // Use custom Edge Function to send branded verification email via Resend
+      const { data, error } = await supabase.functions.invoke("send-signup-verification", {
+        body: { 
+          email,
+          redirectTo: window.location.origin,
         },
       });
 
@@ -41,6 +41,21 @@ export function EmailVerificationScreen({
           title: "Failed to resend",
           description: error.message,
         });
+      } else if (data?.error) {
+        // Handle specific error codes from the Edge Function
+        if (data.code === "ALREADY_VERIFIED") {
+          toast({
+            title: "Already verified",
+            description: "Your email is already verified. Please sign in.",
+          });
+          onBack(); // Return to sign in screen
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Failed to resend",
+            description: data.error,
+          });
+        }
       } else {
         setResendSuccess(true);
         toast({
@@ -48,6 +63,12 @@ export function EmailVerificationScreen({
           description: "Check your inbox for the verification link.",
         });
       }
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to resend",
+        description: "An unexpected error occurred. Please try again.",
+      });
     } finally {
       setIsResending(false);
     }

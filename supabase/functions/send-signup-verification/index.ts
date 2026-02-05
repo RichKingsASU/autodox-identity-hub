@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -13,6 +12,7 @@ interface VerificationEmailRequest {
   email: string;
   userName?: string;
   brand_id?: string;
+  redirectTo?: string;
 }
 
 // HTML escape helper to prevent XSS
@@ -25,12 +25,12 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, "&#039;");
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Initialize Supabase client early for error logging
+  // Initialize Supabase admin client for link generation
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -41,7 +41,14 @@ serve(async (req) => {
       throw new Error("RESEND_API_KEY is not configured");
     }
 
-    const { email, userName, brand_id }: VerificationEmailRequest = await req.json();
+    const { email, userName, brand_id, redirectTo }: VerificationEmailRequest = await req.json();
+
+    if (!email) {
+      return new Response(
+        JSON.stringify({ error: "Email is required" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
 
     const displayName = userName || email.split("@")[0];
     const safeDisplayName = escapeHtml(displayName);
@@ -62,6 +69,35 @@ serve(async (req) => {
     }
 
     const fromAddress = `${fromName} <${fromEmail}>`;
+
+    // Generate verification link using Admin API
+    const origin = redirectTo || Deno.env.get("SUPABASE_URL")?.replace(".supabase.co", ".lovable.app") || "https://autodox.lovable.app";
+    
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: "signup",
+      email,
+      options: {
+        redirectTo: origin,
+      },
+    });
+
+    if (linkError) {
+      console.error("Error generating verification link:", linkError);
+      // If user already exists/confirmed, provide helpful message
+      if (linkError.message?.includes("already") || linkError.message?.includes("confirmed")) {
+        return new Response(
+          JSON.stringify({ error: "This email is already verified. Please sign in.", code: "ALREADY_VERIFIED" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      throw new Error(`Failed to generate verification link: ${linkError.message}`);
+    }
+
+    const verificationLink = linkData?.properties?.action_link;
+    
+    if (!verificationLink) {
+      throw new Error("No verification link generated");
+    }
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -101,29 +137,32 @@ serve(async (req) => {
                         Hi ${safeDisplayName},
                       </p>
                       <p style="margin: 0 0 30px; color: #b0b0b0; font-size: 15px; line-height: 1.6;">
-                        Welcome to ${fromName}! We're excited to have you on board. Please check your inbox for a verification link from Supabase to complete your registration.
+                        Welcome to ${fromName}! We're excited to have you on board. Please click the button below to verify your email address and complete your registration.
                       </p>
                       
-                      <!-- Info Box -->
-                      <div style="background-color: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: 8px; padding: 20px; margin: 20px 0;">
-                        <p style="margin: 0; color: #e0e0e0; font-size: 15px; line-height: 1.6;">
-                          <strong>📧 Next Steps:</strong>
-                        </p>
-                        <ol style="margin: 10px 0 0; padding-left: 20px; color: #b0b0b0; font-size: 14px; line-height: 1.8;">
-                          <li>Check your inbox (and spam folder) for the verification email</li>
-                          <li>Click the verification link in that email</li>
-                          <li>You'll be redirected back to sign in</li>
-                        </ol>
-                      </div>
+                      <!-- CTA Button -->
+                      <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+                        <tr>
+                          <td align="center">
+                            <a href="${verificationLink}" 
+                               style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4);">
+                              Verify Email Address
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
                       
                       <p style="margin: 20px 0; color: #888888; font-size: 14px; line-height: 1.6;">
-                        If you don't see the verification email within a few minutes, check your spam folder or request a new verification link.
+                        Or copy and paste this link into your browser:
+                      </p>
+                      <p style="margin: 0 0 20px; padding: 12px; background-color: rgba(255,255,255,0.05); border-radius: 6px; word-break: break-all;">
+                        <a href="${verificationLink}" style="color: #667eea; font-size: 13px; text-decoration: none;">${verificationLink}</a>
                       </p>
                       
                       <!-- Security Notice -->
                       <div style="background-color: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 20px;">
                         <p style="margin: 0; color: #888888; font-size: 13px; line-height: 1.5;">
-                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This email was sent because someone registered with this address on ${fromName}. If this wasn't you, you can safely ignore this email.
+                          🛡️ <strong style="color: #a0a0a0;">Security tip:</strong> This link will expire in 24 hours. If you didn't create an account with ${fromName}, you can safely ignore this email.
                         </p>
                       </div>
                     </td>
@@ -150,11 +189,12 @@ serve(async (req) => {
     const data = await res.json();
     const status = res.ok ? "sent" : "failed";
 
-    // Log to email_logs with required from_email field
+    // Log to email_logs
     await supabase.from("email_logs").insert({
       to_email: email,
       from_email: fromAddress,
       subject: `Verify Your Email - ${fromName}`,
+      template_key: "signup_verification",
       resend_id: data.id || null,
       status: status,
       error_message: res.ok ? null : JSON.stringify(data),
@@ -187,7 +227,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ error: "An unexpected error occurred" }),
+      JSON.stringify({ error: error.message || "An unexpected error occurred" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
