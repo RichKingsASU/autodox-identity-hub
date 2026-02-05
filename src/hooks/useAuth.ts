@@ -128,6 +128,7 @@ export function useAuth() {
     password: string,
     metadata: { first_name: string; last_name: string; phone?: string }
   ) => {
+    // Create user without triggering Supabase's default email (handled by our Edge Function)
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -137,18 +138,23 @@ export function useAuth() {
       },
     });
 
-    // Send custom branded verification email via Resend
+    // Send branded verification email via Resend Edge Function
+    // This generates the actual verification link and sends it with our branding
     if (data?.user && !error) {
       try {
-        await supabase.functions.invoke("send-signup-verification", {
+        const { error: emailError } = await supabase.functions.invoke("send-signup-verification", {
           body: {
             email,
             userName: metadata.first_name,
+            redirectTo: window.location.origin,
           },
         });
+        
+        if (emailError) {
+          console.error("Failed to send verification email:", emailError);
+        }
       } catch (err) {
-        console.error("Failed to send custom verification email:", err);
-        // Don't fail signup - Supabase's default email was still sent
+        console.error("Failed to send verification email:", err);
       }
     }
 
