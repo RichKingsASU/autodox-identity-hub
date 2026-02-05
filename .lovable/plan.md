@@ -1,52 +1,105 @@
 
+# Fix Email Verification to Use Only Resend with Proper Branding
 
-# Remove All Lovable Branding
+## Problem Analysis
+The current system sends **two emails** during signup:
+1. **Stock Supabase email** - contains the actual verification link but has generic branding
+2. **Custom Resend email** - has your branding but tells users to "look for the Supabase email" instead of containing the link
 
-## Overview
-This plan removes all Lovable branding and references from your project, giving you a clean white-label codebase.
+Additionally, the "Resend Verification Email" button uses `supabase.auth.resend()` which triggers another stock Supabase email.
 
-## Settings Action (Do This First)
-Go to **Project Settings** and enable **"Hide 'Lovable' Badge"** - this removes the floating heart icon on your published site.
+## Solution Overview
+Consolidate all verification emails through Resend with your branding by:
+1. Generating verification links using Supabase Admin API
+2. Sending all emails via Resend with proper branding
+3. Disabling the stock Supabase email system
 
-## Code Changes
+## Changes Required
 
-### 1. Remove Development Tagger
-**File:** `vite.config.ts`
-- Remove the `lovable-tagger` import and plugin call
-- This eliminates the development badge
+### 1. Update Edge Function: `send-signup-verification`
+**File:** `supabase/functions/send-signup-verification/index.ts`
 
-### 2. Update Social Media Images
-**File:** `index.html`
-- Replace `https://lovable.dev/opengraph-image-p98pqg.png` with your own branding image
-- Affects both Open Graph and Twitter card previews
+**Changes:**
+- Use `auth.admin.generateLink({ type: "signup", ... })` to create the actual verification link
+- Embed the link in the branded HTML template with a clickable button
+- Fetch brand settings for dynamic sender identity
+- Remove the "check your inbox for Supabase email" messaging
 
-### 3. Update Admin Panel Text
-**File:** `src/pages/admin/AdminSettings.tsx`
-- Change "Lovable Cloud" reference to "Database" or "Cloud Backend"
+**New Flow:**
+```
+User Signs Up → Edge Function generates link via Admin API → Resend sends branded email with link
+```
 
-**File:** `src/hooks/useIntegrationStatus.ts`
-- Update the integration detail from "Lovable Cloud" to your preferred label
+### 2. Update Email Verification Screen
+**File:** `src/components/auth/EmailVerificationScreen.tsx`
 
-### 4. Clean Up Reserved Domains
-**File:** `src/hooks/useBrandDomain.ts`
-- Remove `lovable.app` and `lovable.dev` from the reserved domains list (optional - these prevent accidental misconfiguration)
+**Changes:**
+- Replace `supabase.auth.resend()` with a call to the custom `send-signup-verification` Edge Function
+- This ensures resent emails also go through Resend with branding
 
-### 5. Fix Password Reset Fallback
-**File:** `supabase/functions/request-password-reset/index.ts`
-- Update the hardcoded preview URL to your production domain (e.g., `https://agents-institute.com`)
+### 3. Update Auth Hook
+**File:** `src/hooks/useAuth.ts`
 
-### 6. Update Documentation
-**File:** `README.md`
-- Rewrite to reflect your project identity instead of Lovable boilerplate
+**Changes:**
+- Remove the comment about "Supabase's default email was still sent" since we're disabling it
+- Pass the user's name to the Edge Function for personalization
+
+### 4. Add Default Brand Email Settings
+**Database:** `brand_email_settings` table
+
+**Insert default record:**
+- `from_name`: "Autodox"
+- `from_email`: "noreply@email.agents-institute.com"
+- `reply_to_email`: "support@agents-institute.com"
+
+### 5. Disable Supabase Stock Email (Configuration)
+Use the configure-auth tool to:
+- Enable `autoConfirm` for emails **OR**
+- Configure custom SMTP to point to Resend (preferred approach maintains verification requirement)
+
+## Email Template Design
+The branded email will include:
+- **Subject:** "Verify Your Email - Autodox"
+- **From:** "Autodox <noreply@email.agents-institute.com>"
+- **Content:** Personalized greeting, clear CTA button with verification link, security notice
+- **Footer:** Brand copyright with current year
+
+## Technical Details
+
+### Link Generation (Edge Function)
+```typescript
+const { data: linkData, error } = await supabase.auth.admin.generateLink({
+  type: "signup",
+  email,
+  options: {
+    redirectTo: `${origin}/`,
+  },
+});
+const verificationLink = linkData.properties.action_link;
+```
+
+### Resend Verification (Frontend)
+```typescript
+// Before (triggers stock email):
+await supabase.auth.resend({ type: "signup", email });
+
+// After (uses branded Edge Function):
+await supabase.functions.invoke("send-signup-verification", {
+  body: { email, userName: "User" },
+});
+```
 
 ## Files to Modify
 | File | Change |
 |------|--------|
-| `vite.config.ts` | Remove lovable-tagger plugin |
-| `index.html` | Update OG/Twitter images |
-| `src/pages/admin/AdminSettings.tsx` | Remove "Lovable Cloud" text |
-| `src/hooks/useIntegrationStatus.ts` | Update integration label |
-| `src/hooks/useBrandDomain.ts` | Remove reserved domains (optional) |
-| `supabase/functions/request-password-reset/index.ts` | Update fallback URL |
-| `README.md` | Rebrand documentation |
+| `supabase/functions/send-signup-verification/index.ts` | Add link generation, update template |
+| `src/components/auth/EmailVerificationScreen.tsx` | Use Edge Function for resend |
+| `src/hooks/useAuth.ts` | Update comments, ensure proper data passed |
+| Database | Insert default brand_email_settings record |
 
+## Testing Plan
+1. Sign up with a new email
+2. Verify only ONE email arrives (from Resend)
+3. Confirm the email has correct branding and working verification link
+4. Test "Resend Verification Email" button sends branded email
+5. Verify replies go to the correct address
