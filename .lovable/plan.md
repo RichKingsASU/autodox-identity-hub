@@ -1,20 +1,52 @@
 
-# Grant Admin Access to All Three Accounts
 
-## Current Status
-| Email | User ID | Current Role |
-|-------|---------|--------------|
-| richard1king1@gmail.com | aff1e19d-b4eb-45b7-b932-ab556dbd9a34 | super_admin ✓ |
-| richardking427@yahoo.com | ebccefa4-02f6-4d03-8938-49de9c76a56a | admin ✓ |
-| freakinglasers1983@gmail.com | 4557f115-d219-4c8d-9cf9-938c2cb81c29 | **No role** |
+# Remove All Lovable Branding
 
-## Action Required
-Insert an admin role for `freakinglasers1983@gmail.com`:
+## Overview
+This plan removes all Lovable branding and references from your project, giving you a clean white-label codebase.
 
-```sql
-INSERT INTO user_roles (user_id, role) 
-VALUES ('4557f115-d219-4c8d-9cf9-938c2cb81c29', 'admin');
-```
+## Settings Action (Do This First)
+Go to **Project Settings** and enable **"Hide 'Lovable' Badge"** - this removes the floating heart icon on your published site.
 
-## Result
-After this change, all three accounts will have admin access to the Admin Portal at `/admin/*`, including the Templates page where you can view and preview the new Koala Sign template.
+## Code Changes
+
+### 1. Remove Development Tagger
+**File:** `vite.config.ts`
+- Remove the `lovable-tagger` import and plugin call
+- This eliminates the development badge
+
+### 2. Update Social Media Images
+**File:** `index.html`
+- Replace `https://lovable.dev/opengraph-image-p98pqg.png` with your own branding image
+- Affects both Open Graph and Twitter card previews
+
+### 3. Update Admin Panel Text
+**File:** `src/pages/admin/AdminSettings.tsx`
+- Change "Lovable Cloud" reference to "Database" or "Cloud Backend"
+
+**File:** `src/hooks/useIntegrationStatus.ts`
+- Update the integration detail from "Lovable Cloud" to your preferred label
+
+### 4. Clean Up Reserved Domains
+**File:** `src/hooks/useBrandDomain.ts`
+- Remove `lovable.app` and `lovable.dev` from the reserved domains list (optional - these prevent accidental misconfiguration)
+
+### 5. Fix Password Reset Fallback
+**File:** `supabase/functions/request-password-reset/index.ts`
+- Update the hardcoded preview URL to your production domain (e.g., `https://agents-institute.com`)
+
+### 6. Update Documentation
+**File:** `README.md`
+- Rewrite to reflect your project identity instead of Lovable boilerplate
+
+## Files to Modify
+| File | Change |
+|------|--------|
+| `vite.config.ts` | Remove lovable-tagger plugin |
+| `index.html` | Update OG/Twitter images |
+| `src/pages/admin/AdminSettings.tsx` | Remove "Lovable Cloud" text |
+| `src/hooks/useIntegrationStatus.ts` | Update integration label |
+| `src/hooks/useBrandDomain.ts` | Remove reserved domains (optional) |
+| `supabase/functions/request-password-reset/index.ts` | Update fallback URL |
+| `README.md` | Rebrand documentation |
+
