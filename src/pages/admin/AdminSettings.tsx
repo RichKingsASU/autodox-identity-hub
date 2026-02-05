@@ -218,7 +218,7 @@ export default function AdminSettings() {
                   delivery including verification emails, password resets, and notifications.
                 </p>
                 <p>
-                  <strong className="text-foreground">Database</strong> - Lovable Cloud provides the backend 
+                  <strong className="text-foreground">Database</strong> - Cloud backend provides the 
                   database for storing brands, users, applications, and configurations.
                 </p>
               </div>

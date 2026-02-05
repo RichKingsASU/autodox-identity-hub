@@ -52,7 +52,7 @@ serve(async (req) => {
       type: "recovery",
       email,
       options: {
-        redirectTo: `${req.headers.get("origin") || "https://id-preview--0a37aa5a-3fc4-4b72-b02f-57327c080f4b.lovable.app"}/reset-password`,
+        redirectTo: `${req.headers.get("origin") || "https://agents-institute.com"}/reset-password`,
       },
     });
 

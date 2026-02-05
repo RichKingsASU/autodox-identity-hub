@@ -144,7 +144,7 @@ export function useIntegrationStatus(autoRefresh = false, refreshInterval = 6000
         name: "Database",
         status: "connected",
         message: "Connected",
-        detail: "Lovable Cloud",
+        detail: "Cloud Backend",
         lastChecked: new Date(),
       };
     } catch (err) {

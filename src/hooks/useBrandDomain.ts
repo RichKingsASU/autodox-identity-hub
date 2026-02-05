@@ -16,8 +16,6 @@ export interface BrandDomainState {
 
 // Reserved domains that cannot be configured
 const RESERVED_DOMAINS = [
-  'lovable.app',
-  'lovable.dev',
   'netlify.app',
   'netlify.com',
   'supabase.co',
