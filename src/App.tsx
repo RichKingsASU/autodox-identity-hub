@@ -1,37 +1,37 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { toast } from "sonner";
-import Index from "./pages/Index";
-import Contact from "./pages/Contact";
-import ResetPassword from "./pages/ResetPassword";
-import NotFound from "./pages/NotFound";
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminApplications from "./pages/admin/AdminApplications";
-import AdminBrands from "./pages/admin/AdminBrands";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminPortals from "./pages/admin/AdminPortals";
-import AdminTemplates from "./pages/admin/AdminTemplates";
-import AdminSettings from "./pages/admin/AdminSettings";
-import AdminAccess from "./pages/admin/AdminAccess";
-import AdminDomains from "./pages/admin/AdminDomains";
-import MyPortal from "./pages/MyPortal";
 
-// Dashboard pages
-import { DashboardLayout } from "./components/dashboard/DashboardLayout";
-import Overview from "./pages/dashboard/Overview";
-import Contacts from "./pages/dashboard/Contacts";
-import APIKeys from "./pages/dashboard/APIKeys";
-import Analytics from "./pages/dashboard/Analytics";
-import Billing from "./pages/dashboard/Billing";
-import Integrations from "./pages/dashboard/Integrations";
-import Support from "./pages/dashboard/Support";
-import Settings from "./pages/dashboard/Settings";
-import ApplicationPage from "./pages/ApplicationPage";
+// Lazy-loaded routes
+const Index = lazy(() => import("./pages/Index"));
+const Contact = lazy(() => import("./pages/Contact"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminApplications = lazy(() => import("./pages/admin/AdminApplications"));
+const AdminBrands = lazy(() => import("./pages/admin/AdminBrands"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminPortals = lazy(() => import("./pages/admin/AdminPortals"));
+const AdminTemplates = lazy(() => import("./pages/admin/AdminTemplates"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminAccess = lazy(() => import("./pages/admin/AdminAccess"));
+const AdminDomains = lazy(() => import("./pages/admin/AdminDomains"));
+const MyPortal = lazy(() => import("./pages/MyPortal"));
+const DashboardLayout = lazy(() => import("./components/dashboard/DashboardLayout").then(m => ({ default: m.DashboardLayout })));
+const Overview = lazy(() => import("./pages/dashboard/Overview"));
+const Contacts = lazy(() => import("./pages/dashboard/Contacts"));
+const APIKeys = lazy(() => import("./pages/dashboard/APIKeys"));
+const Analytics = lazy(() => import("./pages/dashboard/Analytics"));
+const Billing = lazy(() => import("./pages/dashboard/Billing"));
+const Integrations = lazy(() => import("./pages/dashboard/Integrations"));
+const Support = lazy(() => import("./pages/dashboard/Support"));
+const Settings = lazy(() => import("./pages/dashboard/Settings"));
+const ApplicationPage = lazy(() => import("./pages/ApplicationPage"));
 
 const queryClient = new QueryClient();
 
@@ -54,6 +54,11 @@ const App = () => {
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <Suspense fallback={
+          <div className="min-h-screen bg-background flex items-center justify-center">
+            <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        }>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/contact" element={<Contact />} />
@@ -93,6 +98,7 @@ const App = () => {
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
