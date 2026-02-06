@@ -1,105 +1,73 @@
 
-# Fix Email Verification to Use Only Resend with Proper Branding
 
-## Problem Analysis
-The current system sends **two emails** during signup:
-1. **Stock Supabase email** - contains the actual verification link but has generic branding
-2. **Custom Resend email** - has your branding but tells users to "look for the Supabase email" instead of containing the link
+# Reduce JavaScript Bundle Size with Code Splitting
 
-Additionally, the "Resend Verification Email" button uses `supabase.auth.resend()` which triggers another stock Supabase email.
+## Problem
+All 20+ page components are eagerly imported in `App.tsx`, creating a single ~412 KiB JavaScript bundle. Users visiting the landing page (`/`) download code for Admin, Dashboard, Portal, and other pages they never see.
 
-## Solution Overview
-Consolidate all verification emails through Resend with your branding by:
-1. Generating verification links using Supabase Admin API
-2. Sending all emails via Resend with proper branding
-3. Disabling the stock Supabase email system
+## Solution
+Use React's `lazy()` and `Suspense` to code-split routes. Only the landing page and shared UI load upfront; everything else loads on-demand when navigated to.
 
-## Changes Required
+## Changes
 
-### 1. Update Edge Function: `send-signup-verification`
-**File:** `supabase/functions/send-signup-verification/index.ts`
+### File: `src/App.tsx`
 
-**Changes:**
-- Use `auth.admin.generateLink({ type: "signup", ... })` to create the actual verification link
-- Embed the link in the branded HTML template with a clickable button
-- Fetch brand settings for dynamic sender identity
-- Remove the "check your inbox for Supabase email" messaging
+**Replace** all static imports for route pages (lines 8-34) with `React.lazy()` calls:
 
-**New Flow:**
-```
-User Signs Up → Edge Function generates link via Admin API → Resend sends branded email with link
-```
-
-### 2. Update Email Verification Screen
-**File:** `src/components/auth/EmailVerificationScreen.tsx`
-
-**Changes:**
-- Replace `supabase.auth.resend()` with a call to the custom `send-signup-verification` Edge Function
-- This ensures resent emails also go through Resend with branding
-
-### 3. Update Auth Hook
-**File:** `src/hooks/useAuth.ts`
-
-**Changes:**
-- Remove the comment about "Supabase's default email was still sent" since we're disabling it
-- Pass the user's name to the Edge Function for personalization
-
-### 4. Add Default Brand Email Settings
-**Database:** `brand_email_settings` table
-
-**Insert default record:**
-- `from_name`: "Autodox"
-- `from_email`: "noreply@email.agents-institute.com"
-- `reply_to_email`: "support@agents-institute.com"
-
-### 5. Disable Supabase Stock Email (Configuration)
-Use the configure-auth tool to:
-- Enable `autoConfirm` for emails **OR**
-- Configure custom SMTP to point to Resend (preferred approach maintains verification requirement)
-
-## Email Template Design
-The branded email will include:
-- **Subject:** "Verify Your Email - Autodox"
-- **From:** "Autodox <noreply@email.agents-institute.com>"
-- **Content:** Personalized greeting, clear CTA button with verification link, security notice
-- **Footer:** Brand copyright with current year
-
-## Technical Details
-
-### Link Generation (Edge Function)
 ```typescript
-const { data: linkData, error } = await supabase.auth.admin.generateLink({
-  type: "signup",
-  email,
-  options: {
-    redirectTo: `${origin}/`,
-  },
-});
-const verificationLink = linkData.properties.action_link;
+import { lazy, Suspense, useEffect } from "react";
+// Keep only non-route imports (Toaster, TooltipProvider, etc.)
+
+// Lazy-loaded routes
+const Index = lazy(() => import("./pages/Index"));
+const Contact = lazy(() => import("./pages/Contact"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminApplications = lazy(() => import("./pages/admin/AdminApplications"));
+const AdminBrands = lazy(() => import("./pages/admin/AdminBrands"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminPortals = lazy(() => import("./pages/admin/AdminPortals"));
+const AdminTemplates = lazy(() => import("./pages/admin/AdminTemplates"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminAccess = lazy(() => import("./pages/admin/AdminAccess"));
+const AdminDomains = lazy(() => import("./pages/admin/AdminDomains"));
+const MyPortal = lazy(() => import("./pages/MyPortal"));
+const DashboardLayout = lazy(() => import("./components/dashboard/DashboardLayout").then(m => ({ default: m.DashboardLayout })));
+const Overview = lazy(() => import("./pages/dashboard/Overview"));
+const Contacts = lazy(() => import("./pages/dashboard/Contacts"));
+const APIKeys = lazy(() => import("./pages/dashboard/APIKeys"));
+const Analytics = lazy(() => import("./pages/dashboard/Analytics"));
+const Billing = lazy(() => import("./pages/dashboard/Billing"));
+const Integrations = lazy(() => import("./pages/dashboard/Integrations"));
+const Support = lazy(() => import("./pages/dashboard/Support"));
+const Settings = lazy(() => import("./pages/dashboard/Settings"));
+const ApplicationPage = lazy(() => import("./pages/ApplicationPage"));
 ```
 
-### Resend Verification (Frontend)
+**Wrap** `<Routes>` with `<Suspense>` and a minimal loading fallback:
+
 ```typescript
-// Before (triggers stock email):
-await supabase.auth.resend({ type: "signup", email });
-
-// After (uses branded Edge Function):
-await supabase.functions.invoke("send-signup-verification", {
-  body: { email, userName: "User" },
-});
+<Suspense fallback={
+  <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+  </div>
+}>
+  <Routes>
+    {/* ...all routes unchanged... */}
+  </Routes>
+</Suspense>
 ```
 
-## Files to Modify
+## Expected Impact
+- Initial bundle for `/` drops from ~412 KiB to roughly ~150-180 KiB (landing page + shared libs only)
+- Admin (~9 pages) and Dashboard (~8 pages) load only when users navigate there
+- No visible change to user experience -- a brief spinner shows during chunk loads
+
+## Files Modified
 | File | Change |
 |------|--------|
-| `supabase/functions/send-signup-verification/index.ts` | Add link generation, update template |
-| `src/components/auth/EmailVerificationScreen.tsx` | Use Edge Function for resend |
-| `src/hooks/useAuth.ts` | Update comments, ensure proper data passed |
-| Database | Insert default brand_email_settings record |
+| `src/App.tsx` | Replace static imports with `lazy()`, wrap Routes in `Suspense` |
 
-## Testing Plan
-1. Sign up with a new email
-2. Verify only ONE email arrives (from Resend)
-3. Confirm the email has correct branding and working verification link
-4. Test "Resend Verification Email" button sends branded email
-5. Verify replies go to the correct address
+No other files need changes. All existing page components already use `export default`.
