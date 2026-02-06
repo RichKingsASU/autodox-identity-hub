@@ -1,3 +1,7 @@
+import '@fontsource/plus-jakarta-sans/500.css';
+import '@fontsource/plus-jakarta-sans/800.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";

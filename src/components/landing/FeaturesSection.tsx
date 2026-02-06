@@ -1,3 +1,4 @@
+import '@fontsource/ibm-plex-mono/400.css';
 import { motion } from "framer-motion";
 import { Activity, Globe, Code, ShieldCheck } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
