@@ -1,3 +1,4 @@
+import '@fontsource/plus-jakarta-sans/800.css';
 import { motion } from "framer-motion";
 import { Shield, Zap, Globe, CheckCircle2 } from "lucide-react";
 
