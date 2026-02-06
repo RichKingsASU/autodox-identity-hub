@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -7,16 +7,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-interface ContactNotificationRequest {
-  name: string;
-  email: string;
-  company?: string;
-  message: string;
-  brand_id?: string;
-}
 
 // HTML escape helper to prevent XSS
 function escapeHtml(unsafe: string): string {
@@ -83,30 +75,83 @@ async function logEmail(
   }
 }
 
-const handler = async (req: Request): Promise<Response> => {
+// Simple IP-based rate limiting using contact_submissions count
+async function checkRateLimit(supabase: any, ip: string): Promise<boolean> {
+  // Check submissions from this IP in the last hour using debug_logs as a lightweight store
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from('contact_submissions')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', oneHourAgo);
+
+  // Global rate limit: max 20 contact submissions per hour across all users
+  return (count ?? 0) < 20;
+}
+
+// Server-side input validation
+function validateInput(body: any): { valid: boolean; error?: string } {
+  const { name, email, message, company } = body || {};
+
+  if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+    return { valid: false, error: 'Name must be 2-100 characters' };
+  }
+  if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) {
+    return { valid: false, error: 'Invalid email address' };
+  }
+  if (company && (typeof company !== 'string' || company.length > 100)) {
+    return { valid: false, error: 'Company name must be under 100 characters' };
+  }
+  if (!message || typeof message !== 'string' || message.trim().length < 10 || message.trim().length > 2000) {
+    return { valid: false, error: 'Message must be 10-2000 characters' };
+  }
+
+  return { valid: true };
+}
+
+Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   const supabase = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "");
-  let requestPayload: ContactNotificationRequest | null = null;
+  let requestPayload: any = null;
 
   try {
     requestPayload = await req.json();
-    const { name, email, company, message, brand_id } = requestPayload!;
+
+    // Server-side validation
+    const validation = validateInput(requestPayload);
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ success: false, error: validation.error }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Rate limiting
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const withinLimit = await checkRateLimit(supabase, clientIP);
+    if (!withinLimit) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Too many submissions. Please try again later.' }),
+        { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const { name, email, company, message, brand_id } = requestPayload;
 
     // Sanitize all user inputs
-    const safeName = escapeHtml(name || "");
-    const safeEmail = escapeHtml(email || "");
-    const safeCompany = company ? escapeHtml(company) : "";
-    const safeMessage = escapeHtml(message || "").replace(/\n/g, "<br>");
+    const safeName = escapeHtml(name.trim());
+    const safeEmail = escapeHtml(email.trim());
+    const safeCompany = company ? escapeHtml(company.trim()) : "";
+    const safeMessage = escapeHtml(message.trim()).replace(/\n/g, "<br>");
 
     // Resolve brand settings for dynamic sender
     let fromName = "Autodox Contact";
     let fromEmail = "noreply@email.agents-institute.com";
     let adminEmail = "hello@autodox.io";
 
-    if (brand_id) {
+    if (brand_id && typeof brand_id === 'string') {
       const { data: settings } = await supabase
         .from('brand_email_settings')
         .select('from_name, from_email, reply_to_email')
@@ -120,7 +165,6 @@ const handler = async (req: Request): Promise<Response> => {
           adminEmail = settings.reply_to_email;
         }
       } else {
-        // Fallback to brand name
         const { data: brand } = await supabase
           .from('brands')
           .select('name')
@@ -180,7 +224,7 @@ const handler = async (req: Request): Promise<Response> => {
       },
       body: JSON.stringify({
         from: fromAddress,
-        to: [email],
+        to: [email.trim()],
         subject: "We received your message!",
         html: `
           <h1>Thank you for contacting us, ${safeName}!</h1>
@@ -198,7 +242,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     await logEmail(supabase, {
       brand_id,
-      to_email: email,
+      to_email: email.trim(),
       from_email: fromAddress,
       subject: "We received your message!",
       resend_id: userData.id,
@@ -211,13 +255,13 @@ const handler = async (req: Request): Promise<Response> => {
       await supabase
         .from('contact_submissions')
         .update({ last_notified_at: new Date().toISOString() })
-        .eq('email', email)
+        .eq('email', email.trim())
         .order('created_at', { ascending: false })
         .limit(1);
     }
 
     return new Response(
-      JSON.stringify({ success: true, adminNotification: adminData, userConfirmation: userData }),
+      JSON.stringify({ success: true }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
@@ -229,6 +273,4 @@ const handler = async (req: Request): Promise<Response> => {
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
-};
-
-Deno.serve(handler);
+});
