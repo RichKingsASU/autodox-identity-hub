@@ -1,73 +1,47 @@
 
 
-# Reduce JavaScript Bundle Size with Code Splitting
+# Optimize CSS for Faster First Paint
 
 ## Problem
-All 20+ page components are eagerly imported in `App.tsx`, creating a single ~412 KiB JavaScript bundle. Users visiting the landing page (`/`) download code for Admin, Dashboard, Portal, and other pages they never see.
+The single CSS bundle (`index-BtigvdLU.css`, 14.3 KiB) is render-blocking, delaying First Contentful Paint (FCP) and Largest Contentful Paint (LCP). Lighthouse reports ~11.9 KiB of unused CSS on the landing page. Two root causes:
+
+1. **7 font-face files** imported eagerly in `index.css` -- all weights load upfront even if the landing page only uses 2-3
+2. **`App.css`** is a leftover Vite boilerplate file (41 lines of unused rules like `.logo`, `.card`, `.read-the-docs`) -- while not currently imported, it should be deleted for hygiene
+3. **IBM Plex Mono** (2 weights) is only used for `code`/`pre` elements, which don't appear above the fold
 
 ## Solution
-Use React's `lazy()` and `Suspense` to code-split routes. Only the landing page and shared UI load upfront; everything else loads on-demand when navigated to.
 
-## Changes
+### 1. Remove unused `App.css`
+Delete `src/App.css` entirely. It contains Vite starter template styles that are never imported.
 
-### File: `src/App.tsx`
+### 2. Reduce font weight imports
+Keep only the weights actually used on the landing page loaded eagerly. Defer the rest:
 
-**Replace** all static imports for route pages (lines 8-34) with `React.lazy()` calls:
+**Keep eager (used in body text, headings, buttons):**
+- Plus Jakarta Sans 400 (body)
+- Plus Jakarta Sans 600 (semi-bold UI elements)  
+- Plus Jakarta Sans 700 (headings)
 
-```typescript
-import { lazy, Suspense, useEffect } from "react";
-// Keep only non-route imports (Toaster, TooltipProvider, etc.)
+**Remove from global CSS (used only in specific pages/components):**
+- Plus Jakarta Sans 500 -- only used sparingly, browser synthesizes fine
+- Plus Jakarta Sans 800 -- only used in a few hero headings, can load on demand
+- IBM Plex Mono 400, 500 -- only for code blocks, not above-the-fold
 
-// Lazy-loaded routes
-const Index = lazy(() => import("./pages/Index"));
-const Contact = lazy(() => import("./pages/Contact"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const AdminApplications = lazy(() => import("./pages/admin/AdminApplications"));
-const AdminBrands = lazy(() => import("./pages/admin/AdminBrands"));
-const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
-const AdminPortals = lazy(() => import("./pages/admin/AdminPortals"));
-const AdminTemplates = lazy(() => import("./pages/admin/AdminTemplates"));
-const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
-const AdminAccess = lazy(() => import("./pages/admin/AdminAccess"));
-const AdminDomains = lazy(() => import("./pages/admin/AdminDomains"));
-const MyPortal = lazy(() => import("./pages/MyPortal"));
-const DashboardLayout = lazy(() => import("./components/dashboard/DashboardLayout").then(m => ({ default: m.DashboardLayout })));
-const Overview = lazy(() => import("./pages/dashboard/Overview"));
-const Contacts = lazy(() => import("./pages/dashboard/Contacts"));
-const APIKeys = lazy(() => import("./pages/dashboard/APIKeys"));
-const Analytics = lazy(() => import("./pages/dashboard/Analytics"));
-const Billing = lazy(() => import("./pages/dashboard/Billing"));
-const Integrations = lazy(() => import("./pages/dashboard/Integrations"));
-const Support = lazy(() => import("./pages/dashboard/Support"));
-const Settings = lazy(() => import("./pages/dashboard/Settings"));
-const ApplicationPage = lazy(() => import("./pages/ApplicationPage"));
-```
+### 3. Lazy-load deferred fonts
+Import the removed font weights directly in the components that use them (e.g., import IBM Plex Mono in code-block components, import 800 weight in hero components). This way Vite's code splitting ensures they only load when needed.
 
-**Wrap** `<Routes>` with `<Suspense>` and a minimal loading fallback:
+## Files Changed
 
-```typescript
-<Suspense fallback={
-  <div className="min-h-screen bg-background flex items-center justify-center">
-    <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-  </div>
-}>
-  <Routes>
-    {/* ...all routes unchanged... */}
-  </Routes>
-</Suspense>
-```
-
-## Expected Impact
-- Initial bundle for `/` drops from ~412 KiB to roughly ~150-180 KiB (landing page + shared libs only)
-- Admin (~9 pages) and Dashboard (~8 pages) load only when users navigate there
-- No visible change to user experience -- a brief spinner shows during chunk loads
-
-## Files Modified
 | File | Change |
 |------|--------|
-| `src/App.tsx` | Replace static imports with `lazy()`, wrap Routes in `Suspense` |
+| `src/App.css` | Delete (unused Vite boilerplate) |
+| `src/index.css` | Remove 4 font `@import` lines (500, 800, and both Mono weights) |
+| `src/components/landing/HeroSection.tsx` | Add `import '@fontsource/plus-jakarta-sans/800.css'` for extrabold headings |
+| Components using `font-mono` / `code` | Add `import '@fontsource/ibm-plex-mono/400.css'` where needed |
 
-No other files need changes. All existing page components already use `export default`.
+## Expected Impact
+- CSS bundle drops from ~14.3 KiB to ~8-9 KiB
+- Unused CSS on landing page drops from 11.9 KiB to ~3-4 KiB
+- FCP/LCP improve by removing render-blocking font CSS that isn't needed above the fold
+- No visual change -- all fonts still load, just at the right time
+
